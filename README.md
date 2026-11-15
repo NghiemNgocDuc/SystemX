@@ -1,4 +1,4 @@
-# SystemAutoBot
+# SystemX
 
 **A Windows helper that detects PC problems, offers safe repairs, and records the result.**
 
