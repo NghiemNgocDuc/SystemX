@@ -45,4 +45,4 @@ Build it with `.venv\Scripts\python.exe packaging\build_site.py`, then open `_si
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
-[Background operation](BACKGROUND.md) · [Demo guide](DEMO.md) · [Build plan](PLAN.md)
+[Background operation](BACKGROUND.md) · [Demo guide](DEMO.md) · [5-minute demo script](DEMO_SCRIPT.md) · [Build plan](PLAN.md)
