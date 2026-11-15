@@ -1,412 +1,87 @@
-<title>SystemAutoBot</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="A Windows tray helper that notices common PC problems, tells you what the fix does before it runs, and records every change.">
+<title>SystemAutoBot — Get back to what matters.</title>
+<meta name="description" content="Your quiet Windows helper. Spot common PC problems, approve a repair, and see what changed.">
 <style>
-/* Layout: one quiet column of sections on a grey page, like Windows Settings. White panels with
-   hairline borders, one calm blue for the download, and colour only where it means something
-   (green fine, amber can wait, red needs you). Nothing moves. */
-:root {
-  --page: #f4f4f6;
-  --surface: #ffffff;
-  --sunken: #ecedf1;
-  --border: #dddee4;
-  --ink: #1c1d22;
-  --ink-2: #4b4d57;
-  --ink-3: #696b76;
-  --accent: #2f5d9e;
-  --accent-bg: #2f5d9e;
-  --accent-bg-hover: #264d85;
-  --accent-ink: #ffffff;
-  --accent-soft: #e9eff8;
-  --ok: #2c7a4b;
-  --ok-soft: #e7f3ec;
-  --warn: #8a5a00;
-  --warn-soft: #fbf2dd;
-  --bad: #a8322a;
-  --bad-soft: #fbeae8;
-  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --page: #17181c; --surface: #1f2126; --sunken: #2a2c33; --border: #34363e;
-    --ink: #ececf1; --ink-2: #b9bbc6; --ink-3: #9698a4;
-    --accent: #8fb4ee; --accent-bg: #3d6fb8; --accent-bg-hover: #4a7dc8; --accent-ink: #ffffff; --accent-soft: #222c3d;
-    --ok: #7fd0a0; --ok-soft: #1f3329; --warn: #e6bb6a; --warn-soft: #3a2f18; --bad: #f09b93; --bad-soft: #3d2422;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --page: #17181c; --surface: #1f2126; --sunken: #2a2c33; --border: #34363e;
-  --ink: #ececf1; --ink-2: #b9bbc6; --ink-3: #9698a4;
-  --accent: #8fb4ee; --accent-bg: #3d6fb8; --accent-bg-hover: #4a7dc8; --accent-ink: #ffffff; --accent-soft: #222c3d;
-  --ok: #7fd0a0; --ok-soft: #1f3329; --warn: #e6bb6a; --warn-soft: #3a2f18; --bad: #f09b93; --bad-soft: #3d2422;
-  color-scheme: dark;
-}
-
-* { box-sizing: border-box; }
-body { background: var(--page); color: var(--ink); font: 16px/1.6 var(--font); margin: 0; }
-.wrap { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-h1, h2, h3 { font-family: var(--display); font-weight: 600; line-height: 1.2; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(32px, 4.6vw, 48px); letter-spacing: -0.01em; }
-h2 { font-size: clamp(24px, 3vw, 30px); }
-h3 { font-size: 17px; }
-p { margin: 0; max-width: 65ch; }
-a { color: var(--accent); }
-code, .mono { font-family: var(--mono); font-size: .9em; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
-.muted { color: var(--ink-2); }
-.small { font-size: 14px; color: var(--ink-3); }
-
-/* header */
-.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--page); border-bottom: 1px solid var(--border); }
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--page); }
-.top .wrap { display: flex; align-items: center; gap: 20px; min-height: 60px; flex-wrap: wrap; }
-.mark { display: flex; align-items: center; gap: 10px; font: 600 17px/1 var(--display); color: var(--ink); text-decoration: none; }
-.mark svg rect { fill: var(--accent-bg); }
-.top nav { display: flex; gap: 20px; margin-left: auto; flex-wrap: wrap; }
-.top nav a { text-decoration: none; font-size: 15px; color: var(--ink-2); }
-.top nav a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 5px; }
-
-/* buttons */
-.btn { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 18px; border: 1px solid var(--border); border-radius: 6px; font: 600 15px/1 var(--font); text-decoration: none; color: var(--ink); background: var(--surface); }
-.btn:hover { background: var(--sunken); }
-.btn.get { background: var(--accent-bg); border-color: var(--accent-bg); color: var(--accent-ink); }
-.btn.get:hover { background: var(--accent-bg-hover); border-color: var(--accent-bg-hover); }
-.btn.small-btn { min-height: 36px; padding: 0 14px; font-size: 14px; }
-.btn small { font: 400 13px/1 var(--font); opacity: .85; }
-
-/* sections */
-section { padding-block: 56px; border-bottom: 1px solid var(--border); }
-.intro { display: grid; gap: 10px; margin-bottom: 28px; }
-.intro p { color: var(--ink-2); font-size: 17px; }
-.eyebrow { font-size: 13px; font-weight: 600; color: var(--ink-3); }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; min-width: 0; }
-.panel h3 { margin-bottom: 6px; }
-.panel p { color: var(--ink-2); font-size: 15px; }
-.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.chip { display: inline-block; font-size: 12.5px; font-weight: 600; line-height: 1; border-radius: 999px; padding: 5px 10px; background: var(--sunken); color: var(--ink-2); white-space: nowrap; }
-.chip.ok { background: var(--ok-soft); color: var(--ok); }
-.chip.warn { background: var(--warn-soft); color: var(--warn); }
-.chip.bad { background: var(--bad-soft); color: var(--bad); }
-
-/* hero */
-.hero { padding-block: 56px 60px; }
-.hero .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 48px; align-items: center; }
-.hero .lede { font-size: 19px; margin-top: 16px; color: var(--ink-2); }
-.hero .cta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 26px; }
-.hero .fine { margin-top: 14px; }
-
-/* the product, shown still: a Windows notification, then the small box it opens */
-.demo { display: grid; gap: 12px; }
-.demo .cap { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
-.toast { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start; }
-.toast .app { width: 30px; height: 30px; border-radius: 7px; background: var(--accent-bg); display: grid; place-items: center; }
-.toast b { display: block; font-weight: 600; font-size: 15px; }
-.toast span { font-size: 14px; color: var(--ink-2); }
-.box-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
-.box-head b { font-weight: 600; }
-.box p { font-size: 14.5px; margin-top: 6px; }
-.box .warnline { color: var(--bad); font-weight: 600; }
-.box .runs { font-size: 13.5px; color: var(--accent); font-weight: 600; margin-top: 8px; }
-.box .row { display: flex; gap: 8px; margin-top: 12px; }
-.fake { font: 600 14px/1 var(--font); padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
-.fake.go { background: var(--accent-bg); border-color: var(--accent-bg); color: var(--accent-ink); }
-
-/* numbers */
-.proof .wrap { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.proof { padding-block: 28px; }
-.stat b { display: block; font: 600 30px/1.1 var(--display); font-variant-numeric: tabular-nums; }
-.stat span { font-size: 14px; color: var(--ink-2); }
-
-/* how it works: a real sequence, so the steps are numbered */
-.stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; counter-reset: stage; }
-.stages li { counter-increment: stage; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-width: 0; }
-.stages li::before { content: counter(stage); display: block; font: 600 13px/1 var(--mono); color: var(--ink-3); margin-bottom: 8px; }
-.stages h3 { font-size: 16px; margin-bottom: 2px; }
-.stages p { font-size: 14px; color: var(--ink-2); }
-
-/* lists inside panels */
-.plain { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
-.plain li { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 15px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-.plain li:last-child { border-bottom: none; padding-bottom: 0; }
-.ticks { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; color: var(--ink-2); }
-
-/* table */
-.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 15px; }
-th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th { font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--page); }
-tr:last-child td { border-bottom: none; }
-
-/* test output */
-.term { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; font: 13.5px/1.8 var(--mono); overflow-x: auto; margin-top: 20px; color: var(--ink-2); white-space: pre; }
-.term .pass { color: var(--ok); font-weight: 600; }
-
-/* providers, steps, faq */
-.providers { display: flex; flex-wrap: wrap; gap: 10px; }
-.prov { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 8px 16px; font-weight: 600; font-size: 15px; }
-.prov small { font-weight: 400; color: var(--ink-3); margin-left: 6px; }
-.steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: step; }
-.steps li { counter-increment: step; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 0; }
-.steps li::before { content: counter(step); display: block; font: 600 13px/1 var(--mono); color: var(--ink-3); margin-bottom: 8px; }
-.steps p { font-size: 14.5px; color: var(--ink-2); margin-top: 4px; }
-.again { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 24px; }
-.faq { display: grid; gap: 8px; margin-top: 28px; }
-.faq details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; }
-.faq summary { cursor: pointer; font-weight: 600; }
-.faq details p { margin-top: 8px; color: var(--ink-2); font-size: 15px; }
-footer { padding-block: 28px 36px; color: var(--ink-3); font-size: 14px; }
-footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
-
-@media (max-width: 900px) {
-  .hero .wrap, .grid2 { grid-template-columns: minmax(0, 1fr); }
-  .grid3, .steps, .stages, .proof .wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stages li:last-child { grid-column: 1 / -1; }
-}
-@media (max-width: 560px) {
-  .grid3, .steps, .stages { grid-template-columns: minmax(0, 1fr); }
-  .top nav { display: none; }
-  section { padding-block: 40px; }
-}
+:root{--ink:#18362d;--muted:#596c62;--green:#236b49;--mint:#e2f0dc;--paper:#fafbf7;--line:#dce3d9;--white:#fff;font-family:"Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--paper);scroll-behavior:smooth}
+*{box-sizing:border-box}body{margin:0}a{color:inherit}button{font:inherit}button,a{-webkit-tap-highlight-color:transparent}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #337650;outline-offset:5px}button{cursor:pointer}svg{flex-shrink:0}p{margin:0;line-height:1.65}h1,h2,h3{margin:0;font-weight:600}h1{font-size:clamp(42px,5vw,70px);line-height:1.06;letter-spacing:-3px}h2{font-size:clamp(28px,3vw,40px);line-height:1.15;letter-spacing:-1.4px}h3{font-size:19px;letter-spacing:-.3px}.wrap{width:min(1180px,calc(100% - 64px));margin:auto}.top{height:92px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:650;font-size:20px;letter-spacing:-.6px}.logo{width:33px;height:33px;background:var(--ink);border-radius:10px;display:grid;place-items:center;color:white}.top nav{display:flex;align-items:center;gap:30px;font-size:14px}.top nav a{text-decoration:none;padding:12px 0}.top nav a:hover{text-decoration:underline;text-underline-offset:5px}.top .nav-get{border:1px solid var(--line);border-radius:30px;padding:11px 20px}.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:76px;align-items:center;padding:62px 0 66px}.hero-copy{padding:8px 0}.eyebrow{font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:1.8px;display:flex;align-items:center;gap:8px;margin-bottom:23px}.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}.hero-copy h1 em{font-style:normal;color:var(--green)}.lede{color:var(--muted);font-size:18px;max-width:430px;margin:24px 0 29px}.download{display:inline-flex;gap:13px;align-items:center;justify-content:center;min-height:58px;padding:0 25px;background:var(--ink);color:white;text-decoration:none;border-radius:12px;font-weight:600;box-shadow:0 5px 12px #18362d12;transition:background .2s,transform .2s}.download:hover{background:var(--green);transform:translateY(-2px)}.download .arrow{margin-left:14px}.download-note{font-size:12px;color:var(--muted);margin:12px 0 22px;max-width:410px}.text-link{font-size:14px;text-underline-offset:5px}.hero-points{display:flex;gap:18px;font-size:13px;color:var(--muted);margin-top:27px}.hero-points span{display:flex;align-items:center;gap:6px}.hero-points b{color:var(--green)}
+.demo{background:var(--mint);border:1px solid #d5e4cd;border-radius:24px;position:relative;min-height:510px;overflow:hidden;padding:24px;isolation:isolate}.demo::before,.demo::after{content:"";position:absolute;border:1px solid #bed4b5;border-radius:50%;width:470px;height:470px;left:-190px;top:105px;z-index:-1}.demo::after{width:600px;height:600px;left:-255px;top:40px}.demo-top{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:#476342}.pause{border:1px solid #b8cbb0;color:#345230;background:#ffffff65;border-radius:20px;min-height:36px;padding:0 12px;letter-spacing:0;font-size:12px}.scene{position:relative;height:345px;margin-top:18px}.app-window{position:absolute;inset:24px 38px 42px 10px;border:1px solid #c5d1c0;border-radius:14px;background:#fbfcf9;box-shadow:0 20px 35px #35562d10;transform:rotate(-4deg);overflow:hidden}.window-bar{height:40px;padding:0 15px;display:flex;gap:5px;align-items:center;border-bottom:1px solid #e5e8e0}.window-bar i{width:7px;height:7px;background:#d4dacf;border-radius:50%}.window-bar span{font-size:11px;color:#7b8676;margin-left:auto}.note{padding:22px}.note h3{font-size:18px;margin-bottom:17px}.note-line{height:6px;background:#e1e6db;border-radius:6px;width:90%;margin:13px 0}.note-line:nth-child(3){width:73%}.note-line:nth-child(4){width:83%}.note-line:nth-child(5){width:55%}.app-status{display:inline-flex;gap:6px;align-items:center;font-size:11px;padding:5px 9px;border-radius:6px;background:#fff0dd;color:#906324;margin-top:10px}.notification{position:absolute;left:54px;right:0;top:126px;background:white;border:1px solid #dde5d7;border-radius:15px;padding:19px;box-shadow:0 18px 44px #1a352526;animation:float 6s ease-in-out infinite}.notification-header{display:flex;align-items:center;gap:8px;font-size:11px;color:#6d7b6c;margin-bottom:13px}.mini-logo{background:var(--green);color:#fff;width:21px;height:21px;border-radius:6px;display:grid;place-items:center;font-size:13px;font-weight:700}.notification-header span:last-child{margin-left:auto}.notification h3{font-size:17px;margin-bottom:6px}.notification p{font-size:13px;color:var(--muted);line-height:1.5}.notification .warning{font-size:11px;color:#95602a;margin-top:8px}.demo-actions{display:flex;gap:8px;margin-top:16px}.demo-actions span{display:inline-block;padding:8px 16px;background:var(--green);color:white;border-radius:7px;font-size:12px;font-weight:600}.demo-actions span+span{color:var(--muted);background:#f1f4ed}.step-label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:12px;color:#45613d}.stages{display:flex;justify-content:center;gap:7px;margin-top:10px}.stages button{border:1px solid transparent;border-radius:20px;padding:9px 12px;background:transparent;color:#526849;font-size:12px;min-height:36px}.stages button[aria-pressed="true"]{background:#fff;border-color:#d7e2ce;color:var(--ink);box-shadow:0 2px 5px #243d1808}.demo[data-step="2"] .app-status{background:#e1f2df;color:#36703c}.demo[data-step="2"] .app-window{transform:rotate(-2deg)}.demo[data-step="2"] .demo-actions span{background:#e1f2df;color:#36703c}.app-window{transition:transform .6s}.notification.changing{animation:appear .45s ease-out,float 6s .45s ease-in-out infinite}.demo.is-paused .notification{animation-play-state:paused}.demo-caption{font-size:11px;text-align:center;color:#526849;margin-top:15px}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}@keyframes appear{from{opacity:.3;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.promise{display:flex;justify-content:space-between;align-items:center;gap:24px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:24px 0}.promise>span{font-size:13px;color:var(--muted)}.promise-list{display:flex;gap:34px;font-size:14px;font-weight:500}.promise-list span{display:flex;align-items:center;gap:9px}.promise-list svg{color:var(--green)}.how{padding:64px 0}.section-head{display:flex;justify-content:space-between;align-items:end;gap:32px;margin-bottom:36px}.section-head p{font-size:15px;color:var(--muted);max-width:330px}.features{display:grid;grid-template-columns:repeat(3,1fr);gap:42px}.feature{border-top:1px solid var(--line);padding-top:20px}.number{font-size:12px;color:var(--green);font-weight:600;display:block;margin-bottom:17px}.feature p{font-size:15px;color:var(--muted);margin-top:10px}.faq-section{border-top:1px solid var(--line);padding:38px 0 48px;display:grid;grid-template-columns:1fr 1.5fr;gap:70px}.faq-section h2{font-size:28px}.faq details{border-bottom:1px solid var(--line);padding:16px 0}.faq details:first-child{padding-top:0}.faq summary{font-size:15px;font-weight:600;cursor:pointer;min-height:28px}.faq p{font-size:14px;color:var(--muted);padding:10px 0 4px}.faq code{font-size:12px}.footer{border-top:1px solid var(--line);display:flex;justify-content:space-between;padding:25px 0 34px;font-size:12px;color:var(--muted)}.footer a{text-underline-offset:4px}.skip{position:fixed;top:-60px;left:12px;background:white;padding:12px;z-index:50}.skip:focus{top:12px}
+@media(min-width:1400px){.hero{padding-top:78px;padding-bottom:78px}}
+@media(max-width:1050px){.hero{gap:38px}.demo{padding:20px}.notification{left:25px}.app-window{right:18px}.hero-points{gap:10px;flex-wrap:wrap}.promise-list{gap:18px}.wrap{width:calc(100% - 48px)}}
+@media(max-width:760px){.top{height:76px}.top nav{gap:18px}.top nav a:first-child{display:none}.hero{grid-template-columns:1fr;gap:35px;padding:38px 0}.hero-copy{grid-row:1}.hero-copy h1{font-size:52px;max-width:500px}.lede{max-width:500px}.hero-points{margin-top:20px}.demo{min-height:460px;max-width:540px;width:100%;margin:auto}.scene{height:300px}.app-window{bottom:28px}.notification{top:95px;left:65px;right:15px}.promise{align-items:start;flex-direction:column;gap:14px}.promise-list{flex-wrap:wrap;gap:15px 24px}.section-head{display:block}.section-head p{margin-top:16px;max-width:460px}.features{gap:24px}.faq-section{grid-template-columns:1fr;gap:25px}.how{padding:44px 0}.footer{gap:20px}}
+@media(max-width:450px){.wrap{width:calc(100% - 36px)}.brand{font-size:17px;gap:8px}.top nav .nav-get{font-size:12px;padding:9px 13px}.top nav a:nth-child(2){display:none}.hero-copy h1{font-size:46px;letter-spacing:-2px}.lede{font-size:17px}.download{width:100%;padding:0 18px}.demo{padding:17px;min-height:447px;border-radius:18px}.notification{left:28px;right:0;padding:16px}.notification h3{font-size:15px}.notification p{font-size:12px}.app-window{inset:24px 20px 28px 0}.stages{gap:0}.stages button{padding:8px 10px}.features{grid-template-columns:1fr;gap:25px}.feature{display:grid;grid-template-columns:35px 1fr;gap:0 10px}.feature p{grid-column:2;margin-top:8px}.number{margin-top:4px}.footer{flex-direction:column;gap:10px}}
+@media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
-
-<header class="top">
-  <div class="wrap">
-    <a class="mark" href="#top" aria-label="SystemAutoBot home">
-      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="15"/><path d="M19 21h26v5H24v4h21v14H19v-5h21v-4H19z" fill="#ffffff"/></svg>
-      SystemAutoBot
-    </a>
-    <nav aria-label="Sections">
-      <a href="#how">How it works</a>
-      <a href="#fixes">What it fixes</a>
-      <a href="#safety">Safety</a>
-      <a href="#ai">Your AI</a>
-    </nav>
-    <a class="btn small-btn get" href="https://github.com/NghiemNgocDuc/SystemX/releases/latest/download/SystemAutoBot-windows.zip">Download</a>
-  </div>
+<header class="wrap top">
+  <a class="brand" href="#"><span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17 6H7v6h10v6H7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>SystemAutoBot</a>
+  <nav aria-label="Main navigation"><a href="#how">How it works</a><a href="https://github.com/NghiemNgocDuc/SystemX">GitHub ↗</a><a class="nav-get" href="#download">Get the app ↓</a></nav>
 </header>
-
-<main id="top">
-  <section class="hero">
-    <div class="wrap">
-      <div>
-        <span class="eyebrow">Windows 10 and 11 · Free · HackUMass 2026</span>
-        <h1 style="margin-top:10px">Your PC's helpdesk lives in the tray.</h1>
-        <p class="lede">SystemAutoBot notices the problems people actually hit, like a full drive, a dead connection or a frozen program. It tells you what the fix does before anything runs, and writes down every change.</p>
-        <div class="cta">
-          <a class="btn get" href="https://github.com/NghiemNgocDuc/SystemX/releases/latest/download/SystemAutoBot-windows.zip">Download for Windows <small>40 MB</small></a>
-          <a href="https://github.com/NghiemNgocDuc/SystemX">Read the code</a>
-        </div>
-        <p class="fine small">Bring your own AI key. Your fixes and their history stay on your PC.</p>
+<a class="skip" href="#main">Skip to content</a>
+<main id="main" class="wrap">
+  <section class="hero" aria-label="SystemAutoBot for Windows">
+    <div class="demo" data-step="0" id="demo">
+      <div class="demo-top"><span>Less fixing. More doing.</span><button class="pause" id="pause" type="button" aria-pressed="false">Pause motion</button></div>
+      <div class="scene" role="img" aria-label="Illustrative demo: a frozen notes app is detected, a repair asks for approval, then the result is checked.">
+        <div class="app-window" aria-hidden="true"><div class="window-bar"><i></i><i></i><i></i><span>Notes</span></div><div class="note"><h3>A little work in progress.</h3><div class="note-line"></div><div class="note-line"></div><div class="note-line"></div><div class="note-line"></div><span class="app-status" id="app-status">● Not responding</span></div></div>
+        <div class="notification" id="notification" aria-hidden="true"><div class="notification-header"><span class="mini-logo">S</span><span>SystemAutoBot</span><span>just now</span></div><h3 id="demo-title">Looks like Notes is stuck.</h3><p id="demo-body">I noticed it stopped responding. A repair is ready when you are.</p><p class="warning" id="demo-warning">You decide what happens next.</p><div class="demo-actions"><span id="demo-primary">See the fix</span><span id="demo-secondary">Not now</span></div></div>
+        <div class="step-label" id="step-label">01 / A problem gets noticed.</div>
       </div>
-
-      <div class="demo" role="img" aria-label="Example: a Windows notification about a frozen program, and the small box it opens, asking Allow or Not now">
-        <span class="cap">1. A critical problem sends a Windows notification</span>
-        <div class="panel toast">
-          <span class="app"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><path d="M19 21h26v5H24v4h21v14H19v-5h21v-4H19z" fill="#ffffff"/></svg></span>
-          <div><b>notepad is not responding.</b><span>Fix ready: Close and reopen notepad. Click to allow it or not.</span></div>
-        </div>
-        <span class="cap">2. Click it: a small box says what the fix does</span>
-        <div class="panel box">
-          <div class="box-head"><b>notepad is not responding.</b><span class="chip bad">Needs you now</span></div>
-          <p><b>Close and reopen notepad.</b> I'll close notepad and open it again.</p>
-          <p class="warnline">Anything you haven't saved in notepad will be lost.</p>
-          <p class="runs">Exactly what runs (2 steps)</p>
-          <div class="row"><span class="fake go">Allow</span><span class="fake">Not now</span></div>
-        </div>
-      </div>
+      <div class="stages" aria-label="Choose an example step"><button type="button" data-stage="0" aria-pressed="true">01 Detect</button><button type="button" data-stage="1" aria-pressed="false">02 Approve</button><button type="button" data-stage="2" aria-pressed="false">03 Check</button></div>
+      <p class="demo-caption">Illustrative example · No changes are made to your PC.</p>
+    </div>
+    <div class="hero-copy" id="download">
+      <div class="eyebrow"><span class="dot"></span>Your everyday Windows helper</div>
+      <h1>PC problems.<br><em>Handled.</em><br>Back to your day.</h1>
+      <p class="lede">A frozen app. A full drive. A connection that won’t cooperate. SystemAutoBot spots the problem and helps you fix it.</p>
+      <a class="download" id="download-link" href="https://github.com/NghiemNgocDuc/SystemX/releases"><svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M1 2.8 8.7 1.7v7.6H1zm9-1.3L19 0v9.3h-9zM1 10.7h7.7v7.6L1 17.2zm9 0h9V20l-9-1.5z"/></svg>Download for Windows<span class="arrow" aria-hidden="true">↓</span></a>
+      <p class="download-note" id="download-note">Windows 10 & 11 · Check GitHub releases for the installer.</p>
+      <a class="text-link" href="demo.html">Try the interactive demo <span aria-hidden="true">↗</span></a>
+      <div class="hero-points"><span><b>✓</b> You approve repairs</span><span><b>✓</b> Every change recorded</span></div>
     </div>
   </section>
-
-  <section class="proof" aria-label="By the numbers">
-    <div class="wrap">
-      <div class="stat"><b>225</b><span>automated tests passing</span></div>
-      <div class="stat"><b>19</b><span>red-team attacks, all refused</span></div>
-      <div class="stat"><b>0</b><span>changes you didn't allow</span></div>
-      <div class="stat"><b>7</b><span>AI providers to choose from</span></div>
+  <div class="promise"><span>A little help, right when you need it.</span><div class="promise-list"><span>◦ Frozen programs</span><span>◦ Low disk space</span><span>◦ Connection issues</span><span>◦ Stuck print jobs</span></div></div>
+  <section class="how" id="how">
+    <div class="section-head"><h2>Less troubleshooting.<br>Three simple steps.</h2><p>Quiet in your tray. Ready when something needs your attention.</p></div>
+    <div class="features">
+      <article class="feature"><span class="number">01 / NOTICE</span><h3>It spots the problem.</h3><p>SystemAutoBot checks for common Windows issues. Urgent problems get your attention; smaller ones wait in a daily list.</p></article>
+      <article class="feature"><span class="number">02 / CHOOSE</span><h3>You’re in control.</h3><p>See what the repair will do, including any warnings. Choose Allow when you’re ready, or leave it for later.</p></article>
+      <article class="feature"><span class="number">03 / CONTINUE</span><h3>See what changed.</h3><p>It checks the result and saves the repair steps in Activity, so you can see what worked and what still needs attention.</p></article>
     </div>
   </section>
-
-  <section id="how">
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">How it works</span>
-        <h2>One path for every problem.</h2>
-      </div>
-      <ol class="stages">
-        <li><h3>Watch</h3><p>Windows events live, plus cheap checks every few minutes.</p></li>
-        <li><h3>Match</h3><p>Known problems use built-in playbooks. New ones go to your AI.</p></li>
-        <li><h3>Triage</h3><p>A fixed rule table decides critical or can wait.</p></li>
-        <li><h3>Ask</h3><p>Critical: a notification now. The rest: one list at the end of the day.</p></li>
-        <li><h3>Fix</h3><p>After you press Allow, or on its own if you switched Autopilot on.</p></li>
-        <li><h3>Verify</h3><p>The same check runs again to see whether it worked.</p></li>
-        <li><h3>Record</h3><p>Steps, files and settings touched, kept in Activity.</p></li>
-      </ol>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">When it speaks up</span>
-        <h2>Critical now. Everything else at 6 PM.</h2>
-        <p>The main window is a summary and a history. It doesn't jump in front of you.</p>
-      </div>
-      <div class="grid2">
-        <div class="panel">
-          <span class="chip bad">Critical · notification right away</span>
-          <h3 style="margin-top:10px">You're connected, but the internet isn't working.</h3>
-          <p>Click the notification and a small box says what the fix does in one sentence, shows any warning, and asks Allow or Not now. The exact steps and commands are one click away.</p>
-        </div>
-        <div class="panel">
-          <span class="chip warn">Can wait · end-of-day list</span>
-          <h3 style="margin-top:10px">3 small things from today</h3>
-          <ul class="plain">
-            <li><span>A print job is stuck on Office Printer.</span><span class="chip">Fix for me</span></li>
-            <li><span>Your C: drive is below your 20 GB warning.</span><span class="chip">I'll do it myself</span></li>
-            <li><span>Photos.exe reported an error.</span><span class="chip">Not now</span></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="fixes">
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">What it fixes</span>
-        <h2>The problems a lot of people have.</h2>
-        <p>No registry cleaners, no driver updaters, no "RAM boosters". Only repairs a real helpdesk would do. In the app, you choose which of these it handles.</p>
-      </div>
-      <div class="tablewrap">
-        <table>
-          <thead><tr><th>Problem</th><th>How it's spotted</th><th>Urgency</th><th>What the fix does</th></tr></thead>
-          <tbody>
-            <tr><td>Drive almost full</td><td>Free-space check</td><td><span class="chip bad">critical under 2 GB</span></td><td>Deletes temporary files and caches, empties the Recycle Bin</td></tr>
-            <tr><td>No internet</td><td>Connected, but two lookups in a row fail</td><td><span class="chip bad">critical</span></td><td>Refreshes the connection, sets DNS back to automatic, resets Winsock</td></tr>
-            <tr><td>Wrong clock</td><td>PC clock more than 5 minutes off</td><td><span class="chip bad">critical</span></td><td>Syncs the time</td></tr>
-            <tr><td>Program frozen</td><td>Not Responding for 30 seconds</td><td><span class="chip bad">critical when in front</span></td><td>Closes and reopens it, with an unsaved-work warning</td></tr>
-            <tr><td>Taskbar or Start stuck</td><td>Explorer not responding</td><td><span class="chip bad">critical</span></td><td>Restarts Windows Explorer</td></tr>
-            <tr><td>Windows Security off</td><td>Real-time protection, virus definitions, firewall</td><td><span class="chip bad">critical</span></td><td>Updates definitions, turns the firewall back on</td></tr>
-            <tr><td>Disk failing</td><td>Events <code>disk 7</code>, <code>disk 153</code>, or the drive's own health report</td><td><span class="chip bad">critical</span></td><td>Opens Windows Backup, then runs Windows' online drive check. It never claims a worn-out drive is cured.</td></tr>
-            <tr><td>Print job stuck</td><td>Job in error in the queue</td><td><span class="chip warn">can wait</span></td><td>Cancels the job, restarts the print service</td></tr>
-            <tr><td>Error box on screen</td><td>A program shows an error message</td><td><span class="chip warn">can wait</span></td><td>Your AI looks into it and may suggest one repair from the fixed list</td></tr>
-            <tr><td>An error it doesn't know</td><td><code>Application Error 1000</code> and friends</td><td><span class="chip warn">can wait</span></td><td>Your AI explains it and picks one repair from the fixed list, or gives you steps</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <section id="think">
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">Fix for me</span>
-        <h2>You see what it does. You decide how much it asks.</h2>
-      </div>
-      <div class="grid2">
-        <div class="panel">
-          <h3>Think mode</h3>
-          <p>Every problem has a Fix for me button. The answer and the Allow button come first; everything behind them is one click away.</p>
-          <ul class="ticks">
-            <li>What will be sent to your AI, before it's sent</li>
-            <li>Each read-only check the AI runs, and what it saw</li>
-            <li>The exact steps and Windows commands, like <code>sfc.exe /scannow</code></li>
-            <li>After Allow: what changed, and whether the re-check passed</li>
-          </ul>
-        </div>
-        <div class="panel">
-          <h3>Autopilot <span class="chip" style="margin-left:6px">off unless you switch it on</span></h3>
-          <p>Fixes critical problems with no click, inside a harness that decides what may run on its own.</p>
-          <ul class="ticks">
-            <li>Only safe repairs: clearing temporary files, refreshing the connection, restarting the taskbar</li>
-            <li>Closing a frozen program is a second switch, because unsaved work is lost</li>
-            <li>Admin repairs still go through the Windows prompt. Five quick ones can skip it, but only after you set that up once from an administrator account.</li>
-            <li>One automatic try per problem a day, then it asks you. You're told right after each fix.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="safety">
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">Safety</span>
-        <h2>The AI never touches your PC.</h2>
-        <p>It can look and it can suggest. The app builds and runs every repair itself.</p>
-      </div>
-      <div class="grid3">
-        <div class="panel"><h3>It picks from a list</h3><p>The AI names one repair from a fixed list. The app writes every command. There is no shell.</p></div>
-        <div class="panel"><h3>You allow each fix</h3><p>Every fix waits for Allow, unless you switch Autopilot on for the safe ones. Admin repairs show the Windows prompt unless you set up the no-prompt option yourself.</p></div>
-        <div class="panel"><h3>Your files are off limits</h3><p>Documents, Desktop, Pictures, Downloads, OneDrive and Program Files are refused, even through links.</p></div>
-        <div class="panel"><h3>Every change is written down</h3><p>Each step, each file, each setting with its old and new value. The history refuses edits.</p></div>
-        <div class="panel"><h3>Error text is just data</h3><p>An event that says "ignore previous instructions" stays a quote. It never reaches a button or a command.</p></div>
-        <div class="panel"><h3>Works with no internet</h3><p>Known problems use local playbooks, so a dead connection gets fixed without an AI it can't reach.</p></div>
-      </div>
-      <div class="term" role="img" aria-label="Test output: red-team suite, 19 passed">&gt; pytest tests/test_redteam.py -v
-test_tools_that_dont_exist_are_refused[run_shell] .......... PASSED
-test_bad_proposals_are_refused[sfc_scan; powershell -c whoami] PASSED
-test_a_proposal_never_runs_without_approval ............... PASSED
-test_key_in_a_tool_result_never_reaches_the_ai ............ PASSED
-<span class="pass">19 passed · 225 in the full suite</span></div>
-    </div>
-  </section>
-
-  <section id="ai">
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">Bring your own AI</span>
-        <h2>Use the AI you already have.</h2>
-        <p>The first time the app opens, it asks which AI to use. You paste your key there, in the app, and pick a model from the ones your key can reach. Nothing is entered on this website.</p>
-      </div>
-      <div class="providers">
-        <span class="prov">xAI Grok <small>default</small></span>
-        <span class="prov">OpenAI</span>
-        <span class="prov">Anthropic Claude</span>
-        <span class="prov">Google Gemini</span>
-        <span class="prov">Groq</span>
-        <span class="prov">OpenRouter <small>many models</small></span>
-        <span class="prov">Any OpenAI-compatible service</span>
-      </div>
-      <p class="muted" style="margin-top:20px">The app keeps your key in <b>Windows Credential Manager</b> on your PC, never in a file, a log or the fix history. You can switch providers any time in Settings.</p>
-    </div>
-  </section>
-
-  <section id="get">
-    <div class="wrap">
-      <div class="intro">
-        <span class="eyebrow">Download</span>
-        <h2>Running in about a minute.</h2>
-      </div>
-      <ol class="steps">
-        <li><h3>Download</h3><p>Get <span class="mono">SystemAutoBot-windows.zip</span> and unzip it anywhere.</p></li>
-        <li><h3>Install</h3><p>Double-click <span class="mono">Install.cmd</span>. No administrator rights needed.</p></li>
-        <li><h3>Allow it once</h3><p>If Windows says it protected your PC, press More info, then Run anyway. The build isn't code-signed yet.</p></li>
-        <li><h3>Set it up in the app</h3><p>The app asks for your AI key, then which problems you want it to handle.</p></li>
-      </ol>
-      <div class="again">
-        <a class="btn get" href="https://github.com/NghiemNgocDuc/SystemX/releases/latest/download/SystemAutoBot-windows.zip">Download for Windows <small>40 MB</small></a>
-        <a class="btn" href="https://github.com/NghiemNgocDuc/SystemX/releases">All releases</a>
-      </div>
-      <div class="faq">
-        <details><summary>What leaves my PC?</summary><p>Only what you type and short check results (free space, program names, error summaries) go to the AI provider you chose, with your key. Documents, photos, passwords and browsing history are never sent. The fix history stays on your PC.</p></details>
-        <details><summary>Do I need an AI key at all?</summary><p>The built-in playbooks work without one: full drive, no internet, wrong clock, frozen programs, stuck printing. The key is for errors it doesn't recognize, and for the chat.</p></details>
-        <details><summary>Can it fix things without asking me?</summary><p>Only if you switch Autopilot on in Settings, and then only repairs that can't lose your work. Repairs that need administrator rights keep the Windows prompt, unless you set up the no-prompt option from an administrator account: that covers five quick repairs and is off by default. It tells you right after each fix, and every step is in Activity.</p></details>
-        <details><summary>Can I choose what it fixes?</summary><p>Yes, in the app. Switch off any kind of problem in Settings and it won't check it or ask about it.</p></details>
-        <details><summary>How do I stop it changing things?</summary><p>Turn on Pause fixes from the tray. It keeps checking and tells you what it finds, but changes nothing, Autopilot included.</p></details>
-        <details><summary>How do I uninstall it?</summary><p>Run <span class="mono">Uninstall.cmd</span> from <span class="mono">%LOCALAPPDATA%\Programs\SystemAutoBot</span>. It asks whether to keep your history and whether to remove saved keys.</p></details>
-      </div>
-    </div>
-  </section>
+  <section class="faq-section" aria-labelledby="questions"><h2 id="questions">A few things to know.</h2><div class="faq">
+    <details><summary>Do I need an AI key?</summary><p>Built-in repairs for common issues work without one. Connect your own AI provider in Settings for unfamiliar errors and chat. Your provider may charge for usage.</p></details>
+    <details><summary>Will it change things without asking?</summary><p>Repairs ask for approval by default. You can enable Autopilot in Settings for supported repairs. Pause fixes stops repairs while monitoring continues.</p></details>
+    <details><summary>How do I install it?</summary><p>Download <code>SystemAutoBot-windows.zip</code> from a GitHub release, extract it, and open <code>Install.cmd</code>. If no installer is listed, a public build has not been published yet. Setup instructions are also in the <a href="https://github.com/NghiemNgocDuc/SystemX#readme">README</a>.</p></details>
+    <details><summary>What stays on my PC?</summary><p>Your fix history stays on your PC. When you use AI, your conversation and check summaries are sent to the provider you connect.</p></details>
+  </div></section>
 </main>
-
-<footer>
-  <div class="wrap">
-    <span>SystemAutoBot · built at HackUMass 2026</span>
-    <a href="https://github.com/NghiemNgocDuc/SystemX">Source on GitHub</a>
-  </div>
-</footer>
+<footer class="wrap footer"><span>SystemAutoBot · A calmer day at your PC.</span><a href="https://github.com/NghiemNgocDuc/SystemX">Explore the source on GitHub ↗</a></footer>
+<script>
+(() => {
+  const demo=document.getElementById('demo'), pause=document.getElementById('pause');
+  const buttons=[...document.querySelectorAll('[data-stage]')];
+  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
+  let stopped=motion.matches, current=0, timer;
+  const steps=[
+    ['Looks like Notes is stuck.','I noticed it stopped responding. A repair is ready when you are.','You decide what happens next.','See the fix','Not now','● Not responding','01 / A problem gets noticed.'],
+    ['Close and reopen Notes?','I’ll restart the app so you can get back to work.','Anything you haven’t saved will be lost.','Allow','Not now','● Waiting for your approval','02 / You choose whether to allow it.'],
+    ['The repair is recorded.','Notes was reopened. The re-check found no frozen window.','The steps and result are saved in Activity.','View activity','Done','✓ Responding again','03 / The result gets checked and saved.']
+  ];
+  function show(index){current=index;demo.dataset.step=index;const s=steps[index];['demo-title','demo-body','demo-warning','demo-primary','demo-secondary','app-status','step-label'].forEach((id,i)=>document.getElementById(id).textContent=s[i]);buttons.forEach((b,i)=>b.setAttribute('aria-pressed',String(i===index)));const card=document.getElementById('notification');card.classList.remove('changing');void card.offsetWidth;card.classList.add('changing');}
+  function schedule(){clearInterval(timer);demo.classList.toggle('is-paused',stopped);pause.textContent=stopped?'Play motion':'Pause motion';pause.setAttribute('aria-pressed',String(stopped));if(!stopped&&!document.hidden)timer=setInterval(()=>show((current+1)%steps.length),4500);}
+  pause.addEventListener('click',()=>{stopped=!stopped;schedule();});
+  buttons.forEach(b=>b.addEventListener('click',()=>{stopped=true;show(Number(b.dataset.stage));schedule();}));
+  document.addEventListener('visibilitychange',schedule);
+  motion.addEventListener('change',e=>{stopped=e.matches;schedule();});
+  schedule();
+  // The release page remains a useful fallback until a public Windows asset exists.
+  fetch('https://api.github.com/repos/NghiemNgocDuc/SystemX/releases/latest',{signal:AbortSignal.timeout(5000)})
+    .then(r=>r.ok?r.json():null).then(release=>{
+      const asset=release?.assets?.find(a=>a.name==='SystemAutoBot-windows.zip');
+      if(!asset)return;
+      const url=new URL(asset.browser_download_url);
+      if(url.origin!=='https://github.com'||!url.pathname.startsWith('/NghiemNgocDuc/SystemX/releases/download/'))return;
+      document.getElementById('download-link').href=url.href;
+      document.getElementById('download-note').textContent='Windows 10 & 11 · ZIP installer · '+(asset.size/1048576).toFixed(1)+' MB';
+    }).catch(()=>{});
+})();
+</script>

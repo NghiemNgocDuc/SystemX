@@ -157,6 +157,12 @@ class Desktop:
 
     # ---- Presenter --------------------------------------------------------------------
 
+    def show_card(self, card) -> None:
+        """Open the ordinary approval UI without relying on a notification click."""
+        with self._lock:
+            self._pending.pop(card.id, None)
+        self._popup(card.id, [card.id], "SystemAutoBot needs you")
+
     def show_popup(self, card) -> None:
         fix = getattr(card, "option", None)
         body = (f"Fix ready: {fix.title}. Click to allow it or not." if fix

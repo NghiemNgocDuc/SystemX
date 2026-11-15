@@ -10,6 +10,33 @@ Every number we show the judges comes from a run we can repeat in front of them.
 
 ## Demo on your own laptop
 
+### Quick start
+
+Double-click **`lab\Start-Demo.cmd`** to open the app and the guided demo panel.
+If the app is already running, quit it from its tray menu first so it can restart with demo endpoints enabled.
+
+First-time setup from the repository folder:
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[grok,ui,dev]" httpx
+lab\Start-Demo.cmd
+```
+
+Start on **Live recovery**. Press **Start live recovery**, keep Demo Notes in front,
+then use **Open approval box** when detection arrives. Read the warning and press
+**Allow** in the app. The panel displays the real repair steps and verification;
+type in the reopened notes window to show that it responds. **Close demo windows /
+start over** clears the disposable test windows while keeping the fix history.
+
+The panel checks for paused repairs, disabled frozen-program monitoring, and Autopilot
+before starting. Its **More capabilities** tab labels recorded events and AI-dependent
+examples separately.
+
+For a browser-only walkthrough, build the site with
+`.venv\Scripts\python.exe packaging\build_site.py` and open `_site\demo.html`.
+That interactive example is explicitly a simulation and makes no PC changes.
+
 No VM needed. Everything in this section is safe for a real laptop. The VM-only breakers in [lab/break/](lab/break/) refuse to run here, because they really change the network, the clock, and the printer.
 
 **The day before:**

@@ -1,0 +1,110 @@
+<div id="sab-interactive-demo">
+  <style>
+    #sab-interactive-demo{--sab-bg:light-dark(#fafbf7,#141c18);--sab-surface:light-dark(#ffffff,#202b24);--sab-ink:light-dark(#18362d,#e4eee5);--sab-muted:light-dark(#596c62,#acbdb0);--sab-line:light-dark(#dce3d9,#3b4b40);--sab-green:light-dark(#236b49,#92d2a9);--sab-soft:light-dark(#e2f0dc,#283c2c);--sab-button:light-dark(#18362d,#b1dfbf);--sab-on-button:light-dark(#ffffff,#18362d);--sab-warn:light-dark(#895516,#efbf7e);--sab-warn-bg:light-dark(#fff2df,#403322);font:15px/1.5 "Segoe UI",system-ui,sans-serif;color:var(--sab-ink);background:var(--sab-bg);border:1px solid var(--sab-line);border-radius:20px;overflow:hidden;color-scheme:light dark}
+    #sab-interactive-demo *{box-sizing:border-box}
+    #sab-interactive-demo button,#sab-interactive-demo a{font:inherit}
+    #sab-interactive-demo button{cursor:pointer}
+    #sab-interactive-demo button:focus-visible,#sab-interactive-demo a:focus-visible,#sab-interactive-demo textarea:focus-visible{outline:3px solid var(--sab-green);outline-offset:3px}
+    #sab-interactive-demo [hidden]{display:none!important}
+    #sab-interactive-demo h2,#sab-interactive-demo h3,#sab-interactive-demo p{margin:0}
+    #sab-interactive-demo .sab-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;border-bottom:1px solid var(--sab-line)}
+    #sab-interactive-demo .sab-brand{display:flex;align-items:center;gap:9px;font-weight:600}
+    #sab-interactive-demo .sab-logo{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--sab-button);color:var(--sab-on-button)}
+    #sab-interactive-demo .sab-tag{font-size:12px;color:var(--sab-muted)}
+    #sab-interactive-demo .sab-layout{display:grid;grid-template-columns:1.2fr 1fr;gap:26px;padding:26px}
+    #sab-interactive-demo .sab-stage{position:relative;background:var(--sab-soft);border-radius:15px;padding:22px;min-width:0;display:flex;flex-direction:column;gap:16px;overflow:hidden}
+    #sab-interactive-demo .sab-stage-label{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--sab-muted);font-weight:600}
+    #sab-interactive-demo .sab-window{border:1px solid var(--sab-line);border-radius:10px;background:var(--sab-surface);overflow:hidden;box-shadow:0 10px 30px light-dark(#18362d0b,#00000020);transition:transform .3s}
+    #sab-interactive-demo[data-phase="frozen"] .sab-window{transform:rotate(-1.5deg)}
+    #sab-interactive-demo .sab-window-head{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;border-bottom:1px solid var(--sab-line);font-size:12px}
+    #sab-interactive-demo .sab-window-head span:last-child{color:var(--sab-green)}
+    #sab-interactive-demo[data-phase="frozen"] .sab-window-head span:last-child,#sab-interactive-demo[data-phase="detected"] .sab-window-head span:last-child,#sab-interactive-demo[data-phase="deferred"] .sab-window-head span:last-child{color:var(--sab-warn)}
+    #sab-interactive-demo textarea{display:block;resize:vertical;width:100%;height:103px;min-height:80px;padding:14px;font:14px/1.6 "Segoe UI",system-ui,sans-serif;border:0;background:var(--sab-surface);color:var(--sab-ink)}
+    #sab-interactive-demo textarea:disabled{opacity:.65}
+    #sab-interactive-demo .sab-notice{background:var(--sab-surface);border:1px solid var(--sab-line);border-radius:12px;padding:17px;min-height:205px}
+    #sab-interactive-demo .sab-notice.changed{animation:sab-enter .3s ease-out}
+    #sab-interactive-demo .sab-notice h3{font-size:17px;line-height:1.35;font-weight:600;margin:0 0 7px}
+    #sab-interactive-demo .sab-notice p{font-size:13px;color:var(--sab-muted)}
+    #sab-interactive-demo .sab-warning{color:var(--sab-warn)!important;background:var(--sab-warn-bg);padding:7px 9px;border-radius:6px;margin-top:11px!important;font-size:12px!important}
+    #sab-interactive-demo .sab-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}
+    #sab-interactive-demo .sab-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:10px 15px;min-height:42px;border:1px solid var(--sab-line);border-radius:8px;color:var(--sab-ink);background:var(--sab-surface);text-decoration:none;font-size:13px;font-weight:600;transition:transform .15s}
+    #sab-interactive-demo .sab-button:hover{transform:translateY(-1px)}
+    #sab-interactive-demo .sab-button.primary{background:var(--sab-button);border-color:var(--sab-button);color:var(--sab-on-button)}
+    #sab-interactive-demo .sab-button:disabled{opacity:.55;cursor:wait;transform:none}
+    #sab-interactive-demo .sab-steps{display:flex;gap:7px;justify-content:space-between;font-size:11px;color:var(--sab-muted)}
+    #sab-interactive-demo .sab-steps span{padding:4px 0;border-bottom:2px solid transparent}
+    #sab-interactive-demo .sab-steps .active{color:var(--sab-ink);border-color:var(--sab-green);font-weight:600}
+    #sab-interactive-demo .sab-copy{display:flex;flex-direction:column;justify-content:center;padding:8px 0}
+    #sab-interactive-demo .sab-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--sab-green);font-weight:600;margin-bottom:15px}
+    #sab-interactive-demo .sab-copy h2{font-size:clamp(32px,4vw,48px);line-height:1.07;letter-spacing:-1.8px;font-weight:600}
+    #sab-interactive-demo .sab-copy h2 em{font-style:normal;color:var(--sab-green)}
+    #sab-interactive-demo .sab-copy>p{color:var(--sab-muted);font-size:15px;margin:18px 0 22px}
+    #sab-interactive-demo .sab-download{min-height:51px;align-self:flex-start;padding:12px 20px;font-size:14px}
+    #sab-interactive-demo .sab-fine{font-size:11px!important;margin:10px 0 20px!important}
+    #sab-interactive-demo .sab-benefit{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:9px;color:var(--sab-muted)}
+    #sab-interactive-demo .sab-benefit i{color:var(--sab-green)}
+    #sab-interactive-demo .sab-record{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:7px;font-size:12px}
+    #sab-interactive-demo .sab-record li{display:flex;gap:8px;align-items:center}
+    #sab-interactive-demo .sab-record li::before{content:"✓";color:var(--sab-green)}
+    #sab-interactive-demo .sab-footer{padding:0 26px 20px;font-size:11px;color:var(--sab-muted)}
+    @keyframes sab-enter{from{opacity:.5;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+    @media(max-width:650px){#sab-interactive-demo .sab-layout{grid-template-columns:1fr;padding:18px;gap:23px}#sab-interactive-demo .sab-copy{padding:0 4px 4px}#sab-interactive-demo .sab-copy h2{font-size:34px}#sab-interactive-demo .sab-header{padding:15px 18px}#sab-interactive-demo .sab-stage{padding:16px}#sab-interactive-demo .sab-footer{padding:0 18px 18px}#sab-interactive-demo .sab-tag{font-size:11px}}
+    @media(prefers-reduced-motion:reduce){#sab-interactive-demo *,#sab-interactive-demo *::before{animation:none!important;transition:none!important}}
+  </style>
+  <div class="sab-header"><div class="sab-brand"><span class="sab-logo" aria-hidden="true">S</span>SystemAutoBot</div><span class="sab-tag">Interactive simulation</span></div>
+  <div class="sab-layout">
+    <section class="sab-stage" aria-label="Try the frozen-app demo">
+      <div class="sab-stage-label">Try a complete recovery</div>
+      <div class="sab-window"><div class="sab-window-head"><span>Demo Notes</span><span id="sab-window-status">Responding</span></div><textarea id="sab-notes" aria-label="Disposable demo notes" spellcheck="false">A little work in progress.
+These are disposable demo notes.</textarea></div>
+      <div class="sab-notice" id="sab-notice">
+        <div aria-live="polite" aria-atomic="true"><h3 id="sab-title">Let’s give it a problem.</h3><p id="sab-description">Freeze this example app. Watch SystemAutoBot notice it and offer a repair.</p></div>
+        <p class="sab-warning" id="sab-warning" hidden>Unsaved text in this example will be lost.</p>
+        <ul class="sab-record" id="sab-record" aria-label="Simulated repair record" hidden><li>Approval received</li><li>Closed the frozen example</li><li>Reopened Demo Notes</li><li>Re-check: responding</li></ul>
+        <div class="sab-actions"><button type="button" class="sab-button primary" id="sab-primary">Freeze the example app</button><button type="button" class="sab-button" id="sab-secondary" hidden>Not now</button></div>
+      </div>
+      <div class="sab-steps" aria-label="Recovery steps"><span data-sab-step="0" class="active">1 Freeze</span><span data-sab-step="1">2 Detect</span><span data-sab-step="2">3 Approve</span><span data-sab-step="3">4 Verify</span></div>
+    </section>
+    <section class="sab-copy" aria-label="Get SystemAutoBot">
+      <div class="sab-eyebrow">Your everyday Windows helper</div>
+      <h2>PC problems.<br><em>Handled.</em><br>Back to your day.</h2>
+      <p>It notices common PC issues, asks before a repair, and shows you what changed.</p>
+      <a class="sab-button primary sab-download" href="https://github.com/NghiemNgocDuc/SystemX/releases" target="_blank" rel="noopener noreferrer"><i data-lucide="download" aria-hidden="true"></i>Download for Windows</a>
+      <p class="sab-fine">Windows 10 & 11 · Opens GitHub releases.<br>The installer must be published there first.</p>
+      <div class="sab-benefit"><i data-lucide="check" aria-hidden="true"></i>Built-in repairs work without an AI key.</div>
+      <div class="sab-benefit"><i data-lucide="check" aria-hidden="true"></i>Every repair has a history.</div>
+    </section>
+  </div>
+  <div class="sab-footer">Simulation only. This preview does not inspect or change your computer.</div>
+  <script>
+    (() => {
+      const root=document.getElementById('sab-interactive-demo');
+      const get=id=>root.querySelector('#'+id);
+      const notes=get('sab-notes'),primary=get('sab-primary'),secondary=get('sab-secondary');
+      const sample='A little work in progress.\nThese are disposable demo notes.';
+      let phase='ready',timer;
+      const config={
+        ready:['Responding','Let’s give it a problem.','Freeze this example app. Watch SystemAutoBot notice it and offer a repair.','Freeze the example app','',0],
+        frozen:['Not responding','The example app is frozen.','SystemAutoBot is checking for a response…','Detecting…','',1],
+        detected:['Not responding','Demo Notes is not responding.','Close and reopen it? Review the warning, then choose whether to allow the repair.','Allow repair','Not now',2],
+        deferred:['Not responding','Okay, the repair can wait.','Nothing was changed. The example is still frozen until you allow a repair.','Review the repair','Start over',2],
+        repairing:['Restarting…','Repairing with your approval.','Closing the frozen example, reopening it, and checking that it responds.','Repairing…','',2],
+        fixed:['Responding again','Back to work.','The example responds again. Try typing in the notes above. Here is the simulated repair record.','Run demo again','',3]
+      };
+      function save(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{demo:'SystemAutoBot recovery simulation',phase},privateContent:{phase}}).catch(()=>{});}
+      function render(){const c=config[phase];root.dataset.phase=phase;get('sab-window-status').textContent=c[0];get('sab-title').textContent=c[1];get('sab-description').textContent=c[2];primary.textContent=c[3];secondary.textContent=c[4];secondary.hidden=!c[4];primary.disabled=phase==='frozen'||phase==='repairing';notes.disabled=!['ready','fixed'].includes(phase);get('sab-warning').hidden=phase!=='detected';get('sab-record').hidden=phase!=='fixed';root.querySelectorAll('[data-sab-step]').forEach(el=>el.classList.toggle('active',Number(el.dataset.sabStep)===c[5]));const notice=get('sab-notice');notice.classList.remove('changed');void notice.offsetWidth;notice.classList.add('changed');}
+      function change(next){phase=next;render();save();}
+      primary.addEventListener('click',()=>{
+        clearTimeout(timer);
+        if(phase==='ready'){change('frozen');timer=setTimeout(()=>change('detected'),1400);}
+        else if(phase==='detected'){change('repairing');timer=setTimeout(()=>{notes.value='Demo Notes is responding again.\nTry typing here.';change('fixed');},1600);}
+        else if(phase==='deferred'){change('detected');}
+        else if(phase==='fixed'){notes.value=sample;change('ready');}
+      });
+      secondary.addEventListener('click',()=>{clearTimeout(timer);if(phase==='detected')change('deferred');else{notes.value=sample;change('ready');}});
+      function restore(state){const saved=state?.privateContent?.phase||state?.modelContent?.phase;if(!config[saved])return;clearTimeout(timer);phase=saved==='frozen'?'detected':saved==='repairing'?'detected':saved;if(phase==='fixed')notes.value='Demo Notes is responding again.\nTry typing here.';render();}
+      render();restore(window.openai?.widgetState);
+      window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+    })();
+  </script>
+</div>

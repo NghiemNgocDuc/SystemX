@@ -608,8 +608,20 @@ table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{border-bottom:
     @app.get("/api/lab/state", dependencies=lab)
     def lab_state():
         p = ctx.pipeline
-        return {"cards": [c.to_dict() for c in p.runner.cards.values()], "history": ctx.history.recent(50),
-                "refusals": ctx.history.refusals()}
+        return {"cards": [dict(c.to_dict(), process_id=c.problem.evidence.get("pid"))
+                          for c in list(p.runner.cards.values())], "history": ctx.history.recent(50),
+                "refusals": ctx.history.refusals(), "settings": ctx.store.public(),
+                "watcher_health": dict(ctx.watcher.health) if ctx.watcher else {}}
+
+    @app.post("/api/lab/show_card", dependencies=lab)
+    def lab_show_card(body: dict):
+        card = ctx.pipeline.runner.cards.get(body.get("card_id", ""))
+        if card is None or card.used:
+            raise HTTPException(404, "That problem is no longer waiting.")
+        if ctx.ui is None:
+            raise HTTPException(503, "The app window isn't ready.")
+        ctx.ui.show_card(card)
+        return {"ok": True}
 
     @app.post("/api/lab/approve", dependencies=lab)
     def lab_approve(body: dict):

@@ -54,6 +54,34 @@ def test_pages_load_without_token(env):
     assert client.get("/static/common.js").status_code == 200
 
 
+def test_demo_panel_can_open_normal_approval_without_running_a_repair(env):
+    from unittest.mock import Mock
+
+    client, good, ctx, pipe, checks, *_ = env
+    card = _major(pipe, checks)
+    ctx.ui = Mock()
+    assert client.post("/api/lab/show_card", json={"card_id": card.id}).status_code == 404
+    ctx.lab_token = "demo-token"
+    assert client.post("/api/lab/show_card", json={"card_id": card.id}).status_code == 403
+    headers = {"X-SAB-Lab-Token": ctx.lab_token}
+    response = client.post("/api/lab/show_card", json={"card_id": card.id}, headers=headers)
+    assert response.status_code == 200
+    ctx.ui.show_card.assert_called_once_with(card)
+    assert not card.used and ctx.history.recent() == []
+    card.used = True
+    assert client.post("/api/lab/show_card", json={"card_id": card.id}, headers=headers).status_code == 404
+
+
+def test_lab_state_includes_readiness_without_changing_settings(env):
+    client, good, ctx, *_ = env
+    ctx.lab_token = "demo-token"
+    ctx.store.settings.demo = True
+    response = client.get("/api/lab/state", headers={"X-SAB-Lab-Token": ctx.lab_token})
+    assert response.status_code == 200
+    assert response.json()["settings"]["demo"] is True
+    assert "watcher_health" in response.json()
+
+
 @pytest.mark.parametrize("headers", [{}, {"X-SAB-Token": "wrong", "Origin": ORIGIN}])
 def test_api_needs_the_token(env, headers):
     client, *_ = env

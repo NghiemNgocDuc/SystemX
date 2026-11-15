@@ -21,3 +21,17 @@ out.mkdir(exist_ok=True)
     encoding="utf-8",
 )
 print(f"wrote {out / 'index.html'}")
+
+# The same interactive simulation can be previewed in conversation or on the website.
+demo = (ROOT / "site" / "demo.html").read_text(encoding="utf-8")
+(out / "demo.html").write_text(
+    '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    '<title>Try SystemAutoBot — Interactive demo</title>'
+    '<style>body{margin:0;padding:24px;background:#eef1eb;max-width:1000px;margin-inline:auto;'
+    'font-family:Segoe UI,system-ui,sans-serif}nav{margin-bottom:16px}nav a{color:#18362d}'
+    '@media(max-width:600px){body{padding:12px}}</style></head><body>'
+    '<nav><a href="index.html">← Back to SystemAutoBot</a></nav>' + demo + '</body></html>\n',
+    encoding="utf-8",
+)
+print(f"wrote {out / 'demo.html'}")
