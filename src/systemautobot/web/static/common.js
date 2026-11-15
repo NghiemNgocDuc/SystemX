@@ -12,7 +12,7 @@ const SAB = (() => {
 
   // How long a request may take before the page stops waiting (the work may still finish; Activity shows it).
   const SLOW = { "/approve": 65 * 60e3, "/explain": 6 * 60e3, "/api/chat": 6 * 60e3, "/api/setup": 2 * 60e3,
-                 "/api/models": 60e3, "/check_again": 2 * 60e3, "/api/check_now": 2 * 60e3, "/api/doctor": 2 * 60e3 };
+                 "/api/models": 60e3, "/api/autopilot_admin": 6 * 60e3, "/check_again": 2 * 60e3, "/api/check_now": 2 * 60e3, "/api/doctor": 2 * 60e3 };
   async function api(path, body, timeoutMs) {
     const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-SAB-Token": token } };
     if (body !== undefined) {
@@ -55,121 +55,171 @@ const SAB = (() => {
     return n;
   }
 
-  // What a fix did, right after the click: steps, what changed, and the re-check.
-  const STEP_MARK = { done: "✓", couldnt: "!", skipped: "–" };
+  // The AI sometimes answers in Markdown; show it as plain words.
+  const plain = (s) => String(s || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/^#+\s*/gm, "").trim();
+
+  // Long text starts short, with "more" to read the rest.
+  function brief(text, limit = 220) {
+    text = String(text || "");
+    if (text.length <= limit) return document.createTextNode(text);
+    const cut = text.lastIndexOf(" ", limit);
+    const span = el("span", {}, text.slice(0, cut > 80 ? cut : limit) + "… ");
+    span.append(el("button", { type: "button", class: "link", onclick: () => { span.textContent = text; } }, "more"));
+    return span;
+  }
+
+  // After a fix, or after Check again found it fixed.
+  function setOutcome(node, worked) {
+    if (!node) return;
+    node.classList.add("finished");
+    const chip = node.querySelector(".card-head .chip");
+    if (chip) {
+      chip.textContent = worked ? "Fixed" : "Didn't work";
+      chip.className = "chip " + (worked ? "ok" : "bad");
+    }
+  }
+
+  // What a fix did, in a few lines: the result, what changed, and the steps one click away.
+  const STEP_WORD = { couldnt: "didn't work", skipped: "skipped" };
   function fixReport(r, opts = {}) {
     const rep = r.report;
     const ok = r.outcome === "done" || r.outcome === "went_away";
-    const head = el("p", { class: "rep-head" }, (ok ? "Done. " : "Couldn't. ") + (r.message || ""));
-    if (!rep) return el("div", { class: "report " + (ok ? "done" : "couldnt") }, head);
+    const buttons = el("div", { class: "actions" },
+      rep && opts.onOpenRecord && el("button", { type: "button", onclick: () => opts.onOpenRecord(rep.fix_id) }, "Full record"),
+      opts.onDismiss && el("button", { type: "button", class: "primary", onclick: opts.onDismiss }, "Got it"));
+    const notFixed = !!rep && rep.verification === "not_fixed"; // it ran, but the problem is still there
+    const cls = "report " + (ok && !notFixed ? "done" : "couldnt");
+    if (!rep) return el("div", { class: cls }, el("p", { class: "rep-head" }, (ok ? "Done. " : "Didn't work. ") + (r.message || "")), buttons);
+    const head = r.outcome === "went_away" ? "It went away on its own, so I changed nothing."
+      : ok && rep.verification === "fixed" ? "Fixed. I checked again and it's gone."
+      : notFixed ? (rep.detail || rep.verdict)
+      : (ok ? "Done. " : "Didn't work. ") + (rep.detail || rep.verdict || r.message || "");
     const files = rep.files || { examples: [], more: 0 };
-    return el("div", { class: "report " + (ok ? "done" : "couldnt") },
-      head,
-      rep.steps.length && el("h4", {}, "What I did"),
-      rep.steps.length && el("ol", { class: "rep-steps" }, rep.steps.map((s) => el("li", { class: s.status },
-        el("span", { class: "mark", "aria-label": s.status }, STEP_MARK[s.status] || "•"),
-        el("span", {}, s.summary, s.admin ? el("span", { class: "caption" }, " (with administrator permission)") : null)))),
-      el("h4", {}, "What changed"),
+    const shown = files.examples.slice(0, 3);
+    const rest = files.more + files.examples.length - shown.length;
+    const extra = [rep.freed && `Freed ${rep.freed}`,
+      shown.length && "Files: " + shown.join(", ") + (rest ? ` and ${rest.toLocaleString()} more` : "")].filter(Boolean).join(" · ");
+    return el("div", { class: cls },
+      el("p", { class: "rep-head" }, head),
       rep.changed.length ? el("ul", { class: "rep-changed" }, rep.changed.map((c) => el("li", {}, c)))
-        : el("p", { class: "small" }, ok ? "Nothing on your PC needed changing." : "Nothing was changed."),
-      files.examples.length > 0 && el("p", { class: "caption" }, "Files: " + files.examples.join(", ")
-        + (files.more ? ` and ${files.more.toLocaleString()} more` : "")),
-      rep.freed && el("p", { class: "small" }, el("b", {}, `Freed ${rep.freed}.`)),
-      rep.verdict && el("p", { class: "rep-verdict " + (rep.verification || "") }, rep.verdict),
-      el("div", { class: "actions" },
-        opts.onOpenRecord && el("button", { type: "button", onclick: () => opts.onOpenRecord(rep.fix_id) }, "Full record in Activity"),
-        opts.onDismiss && el("button", { type: "button", class: "link", onclick: opts.onDismiss }, "Got it")));
+        : r.outcome !== "went_away" && el("p", {}, "Nothing on your PC was changed."),
+      extra && el("p", { class: "caption" }, extra),
+      rep.steps.length > 0 && el("details", {}, el("summary", {}, `Steps (${rep.steps.length})`),
+        el("ol", { class: "rep-steps" }, rep.steps.map((s) => el("li", { class: s.status }, s.summary,
+          STEP_WORD[s.status] ? ` (${STEP_WORD[s.status]})` : "", s.admin ? " · as administrator" : "")))),
+      buttons);
   }
 
-  // The AI sometimes answers in Markdown; show it as plain words.
-  const plain = (s) => String(s || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/^#+\s*/gm, "");
-
-  // ---- think mode: "Fix for me", every step in the open ------------------------------------------
-  // Built-in repairs show their exact plan and wait for Allow. Anything else goes to the AI only after
-  // the person sees what will be sent; then every check it runs and everything it says shows up live.
-  const TAG = { intro: "Plan", plan: "Plan", consent: "Ask", sent: "Sent", round: "AI", reasoning: "Thinking",
-                say: "AI", tool: "Check", answer: "Answer", manual: "Steps", held_back: "Held back",
-                no_ai: "No AI", error: "Problem", stopped: "Stopped", usage: "Used", result: "Done" };
-
-  function thinkPanel(card, opts, onDone) {
+  // ---- think mode: "Fix for me", short ---------------------------------------------------------------
+  // What matters is on top: what the fix does and Allow, or the AI's answer. Everything behind it
+  // (what was sent, each check and what it saw, the AI's reasoning) is one click away, never hidden.
+  // done: { onFixed(result), onCancel() }
+  function thinkPanel(card, opts, done) {
     const via = opts.via || "fix_this";
-    const box = el("section", { class: "think", "aria-label": "Fix for me, step by step" });
-    const log = el("ol", { class: "think-log", "aria-live": "polite" });
+    const main = el("div", { class: "think-main", "aria-live": "polite" });
+    const status = el("p", { class: "think-status caption hidden", role: "status" });
+    const log = el("ol", { class: "think-log" });
+    const trailSum = el("summary", {}, "How it got here");
+    const trail = el("details", { class: "think-trail hidden" }, trailSum, log);
     const bar = el("div", { class: "actions think-bar" });
-    box.append(el("h4", {}, "Think mode"), el("p", { class: "caption" },
-      "Everything I and the AI do is shown here. Nothing on your PC changes until you press Allow."), log, bar);
+    const box = el("section", { class: "think", "aria-label": "Fix for me" },
+      el("p", { class: "think-head" }, el("b", {}, "Think mode"),
+        el("span", { class: "caption" }, " · nothing changes until you press Allow")),
+      main, status, trail, bar);
     let sid = null, seen = 0, ai = opts.aiLabel || "The AI", polling = false;
+    let checks = 0, usage = "", touched = false, askBlock = null, sentText = "", answered = false;
+    trailSum.addEventListener("click", () => { touched = true; });
 
-    const row = (kind, ...kids) => {
-      const li = el("li", { class: "t-" + kind }, el("span", { class: "t-tag" }, TAG[kind] || kind), el("div", { class: "t-body" }, kids));
-      log.querySelectorAll(".spin").forEach((s) => s.remove());
-      log.append(li);
-      li.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      return li;
+    const block = (cls, ...kids) => {
+      const d = el("div", { class: "t-block " + cls }, kids);
+      main.append(d);
+      return d;
+    };
+    const setStatus = (text) => {
+      status.classList.toggle("hidden", !text);
+      status.replaceChildren(...(text ? [el("span", { class: "spin", "aria-hidden": "true" }), text] : []));
+    };
+    const updateTrail = () => {
+      trailSum.textContent = "How it got here" + (checks ? ` · ${checks} check${checks === 1 ? "" : "s"}` : "") + usage;
+    };
+    // One line in the trail. With `more`, the line opens to show the rest.
+    const step = (tag, text, more) => {
+      trail.classList.remove("hidden");
+      const head = [el("span", { class: "t-tag" }, tag), el("span", { class: "t-line" }, text)];
+      log.append(el("li", {}, more ? el("details", {}, el("summary", {}, head), more) : el("div", { class: "t-row" }, head)));
+      updateTrail();
     };
     const buttons = (...bs) => bar.replaceChildren(...bs.filter(Boolean));
-    const stopBtn = () => el("button", { type: "button", class: "link", onclick: async () => {
+    const cancelBtn = (label) => el("button", { type: "button", onclick: () => done.onCancel() }, label);
+    const stopBtn = () => el("button", { type: "button", onclick: async () => {
       if (sid) render(await api(`/api/think/${sid}/stop`, {}));
     } }, "Stop");
-    const close = () => el("button", { type: "button", onclick: () => onDone(null) }, "Close");
+    const fail = (text) => { setStatus(""); block("warn", "Couldn't. " + text); buttons(cancelBtn("Close")); };
 
     function planView(e) {
-      const steps = el("ol", { class: "t-steps" }, e.steps.map((s) => el("li", {},
-        el("div", {}, s.text, s.admin ? el("span", { class: "chip-admin" }, "admin") : null),
-        s.commands.map((c) => el("code", {}, c)),
-        s.notes.map((n) => el("div", { class: "caption" }, n)))));
+      const more = [...new Set(e.steps.flatMap((s) => [...(s.detail || []), ...s.notes]))];
       return [
-        e.by_ai ? el("p", {}, el("b", {}, `${ai} suggests: `), e.title, e.reason ? ` — “${plain(e.reason)}”` : "")
-          : el("p", {}, el("b", {}, e.title)),
+        el("p", {}, e.by_ai ? `${ai} suggests: ` : "", el("b", {}, e.title),
+          e.admin ? el("span", { class: "chip-admin" }, "needs administrator") : null),
         el("p", {}, e.explain),
-        el("p", { class: "caption" }, "Exactly what will run, in order:"),
-        e.steps.length ? steps : el("p", { class: "warn" }, "I couldn't build the steps just now (the program may have closed)."),
+        e.by_ai && e.reason && !answered ? el("p", { class: "caption" }, "Why: " + plain(e.reason)) : null,
         e.warnings.map((w) => el("p", { class: "warn" }, w)),
         el("p", { class: "caption" }, e.undo),
+        e.steps.length ? el("details", {}, el("summary", {}, `Exactly what runs (${e.steps.length} step${e.steps.length === 1 ? "" : "s"})`),
+          el("ol", { class: "t-steps" }, e.steps.map((s) => el("li", {}, s.text, s.commands.map((c) => el("code", {}, c))))),
+          more.length ? el("ul", { class: "t-notes" }, more.map((m) => el("li", {}, m))) : null)
+          : el("p", { class: "warn" }, "I couldn't build the steps just now (the program may have closed)."),
       ];
     }
 
     async function allow(cardId) {
-      buttons(el("span", { class: "caption" }, "Working… Windows may ask for permission."));
+      buttons();
+      setStatus("Working… Windows may ask for permission.");
       try {
         const r = await api(`/api/cards/${cardId}/approve`, { via });
-        if (r.outcome === "refused") {
-          row("error", "Couldn't. " + r.message);
-          return buttons(close());
-        }
-        row("result", fixReport(r, { onOpenRecord: opts.onOpenRecord }));
-        buttons(el("button", { type: "button", class: "primary", onclick: () => onDone(r) }, "Got it"));
+        if (r.outcome === "refused") return fail(r.message);
+        setStatus("");
+        box.classList.add("done");
+        main.replaceChildren(fixReport(r, { onOpenRecord: opts.onOpenRecord, onDismiss: opts.onDismiss }));
+        done.onFixed(r);
       } catch (e) {
-        row("error", "Couldn't. " + e.message);
-        buttons(close());
+        fail(e.message);
       }
     }
 
     function add(e) {
       switch (e.kind) {
-        case "intro": case "sent": case "stopped": return row(e.kind, e.text);
-        case "plan": return row("plan", planView(e));
         case "consent":
           ai = e.provider;
-          return row("consent",
-            el("p", {}, el("b", {}, `Before I send anything: this is exactly what goes to ${e.provider}`), ` (${e.model}).`),
-            el("pre", { class: "t-pre" }, e.sent),
-            el("details", {}, el("summary", {}, "The rules it must follow"), el("pre", { class: "t-pre" }, e.rules)),
-            el("p", { class: "small" }, "It may also read: " + e.checks.join(", ") + ". Each one will show up here."),
-            e.limit && el("p", { class: "caption" }, `AI questions today: ${e.limit.day.calls} of ${e.limit.limit || "no limit"}.`));
-        case "round": return row("round", `Asking ${ai}… (step ${e.n} of at most ${e.max})`, el("span", { class: "spin", "aria-hidden": "true" }));
-        case "reasoning": return row("reasoning", el("div", { class: "bubble" }, plain(e.text)));
-        case "say": return row("say", el("div", { class: "bubble" }, el("b", {}, `${ai}: `), plain(e.text)));
-        case "tool": return row("tool", el("div", {}, e.ok ? "" : "! ", e.text),
-          el("details", {}, el("summary", {}, "What it saw"), el("pre", { class: "t-pre" }, e.seen)));
-        case "answer": return row("answer", el("div", { class: "bubble" }, el("b", {}, `${e.provider}: `), plain(e.text)));
-        case "held_back": return row("held_back", el("p", { class: "warn" }, e.text));
-        case "manual": return row("manual", el("p", {}, e.suggested ? `${ai}'s steps (I haven't checked them):` : "Steps you can follow:"),
+          sentText = e.sent;
+          askBlock = block("ask",
+            el("p", {}, `There's no built-in fix for this. I can ask ${e.provider} to look into it. It only reads this PC and can't change anything.`),
+            el("details", {}, el("summary", {}, "See exactly what I'll send"),
+              el("pre", { class: "t-pre" }, e.sent),
+              el("p", { class: "caption" }, "It may also check: " + e.checks.join(", ") + "."),
+              el("details", {}, el("summary", {}, "The rules it must follow"), el("pre", { class: "t-pre" }, e.rules)),
+              e.limit && el("p", { class: "caption" }, `AI questions today: ${e.limit.day.calls} of ${e.limit.limit || "no limit"}.`)));
+          return;
+        case "sent":
+          if (askBlock) askBlock.remove();
+          trail.open = true; // live while it works; it folds away when the answer is in
+          return step("Sent", `The error summary went to ${ai}`, el("pre", { class: "t-pre" }, sentText));
+        case "round": return setStatus(`Asking ${ai}… step ${e.n} of at most ${e.max}`);
+        case "wait": setStatus(e.text); return step("Wait", e.text);
+        case "say": { const t = plain(e.text); return step("AI", t, t.length > 70 ? el("p", { class: "t-more" }, t) : null); }
+        case "reasoning": { const t = plain(e.text); return step("Thinking", t.split("\n")[0], el("p", { class: "t-more" }, t)); }
+        case "tool": checks += 1; return step(e.ok ? "Check" : "Refused", e.text, el("pre", { class: "t-pre" }, e.seen));
+        case "usage":
+          usage = ` · ${e.tokens.toLocaleString()} tokens`;
+          return updateTrail();
+        case "answer": answered = true; return block("answer", el("b", {}, `${e.provider}: `), brief(plain(e.text), 280));
+        case "cut_short": return block("note", brief(e.text, 160));
+        case "held_back": return block("warn", e.text);
+        case "manual": return block("steps", el("p", {}, el("b", {}, e.suggested ? `${ai}'s steps (I haven't checked them)` : "What you can do")),
           el("ol", {}, e.steps.map((s) => el("li", {}, s))));
-        case "no_ai": return row("no_ai", e.text);
-        case "error": return row("error", e.text);
-        case "usage": return row("usage", el("span", { class: "caption" },
-          `${e.provider} · ${e.model} · ${e.rounds} step${e.rounds === 1 ? "" : "s"} · ${e.tokens.toLocaleString()} tokens${e.replay ? " · replay" : ""}`));
+        case "plan": return block("plan", planView(e));
+        case "error": return block("warn", brief(e.text, 200));
+        case "no_ai": case "stopped": return block("note", e.text);
         default: return null;
       }
     }
@@ -177,17 +227,21 @@ const SAB = (() => {
     function render(v) {
       sid = v.id;
       for (const e of v.events) if (e.seq >= seen) { add(e); seen = e.seq + 1; }
+      if (v.status !== "thinking") {
+        setStatus("");
+        if (!touched) trail.open = false;
+      }
       const plan = [...v.events].reverse().find((e) => e.kind === "plan");
       switch (v.status) {
         case "plan": case "proposal":
           buttons(el("button", { type: "button", class: "primary", onclick: () => allow(plan.card_id) }, "Allow"),
-                  el("button", { type: "button", onclick: () => onDone(null) }, "Don't"));
+                  cancelBtn(opts.cancelLabel || "Don't"));
           break;
         case "consent":
           buttons(el("button", { type: "button", class: "primary", onclick: async () => {
             buttons(stopBtn());
-            render(await api(`/api/think/${sid}/send`, {}));
-          } }, `Send to ${ai}`), el("button", { type: "button", onclick: () => onDone(null) }, "Cancel"));
+            try { render(await api(`/api/think/${sid}/send`, {})); } catch (e) { fail(e.message); }
+          } }, `Ask ${ai}`), cancelBtn(opts.cancelLabel || "Cancel"));
           break;
         case "thinking":
           buttons(stopBtn());
@@ -195,44 +249,40 @@ const SAB = (() => {
           break;
         case "manual":
           buttons(opts.onConnectAI && v.events.some((e) => e.kind === "no_ai")
-            ? el("button", { type: "button", class: "primary", onclick: opts.onConnectAI }, "Connect an AI") : null, close());
+            ? el("button", { type: "button", class: "primary", onclick: opts.onConnectAI }, "Connect an AI") : null,
+            cancelBtn(opts.cancelLabel || "Close"));
           break;
         default:
-          buttons(close());
+          buttons(cancelBtn("Close"));
       }
     }
 
     async function poll() {
       polling = true;
       try {
-        while (box.isConnected || !sid) {
+        while (box.isConnected) {
           await new Promise((r) => setTimeout(r, 800));
           const v = await api(`/api/think/${sid}?after=${seen}`);
           render(v);
           if (v.status !== "thinking") break;
         }
       } catch (e) {
-        row("error", "Couldn't. " + e.message);
-        buttons(close());
+        fail(e.message);
       }
       polling = false;
     }
 
-    api("/api/think/start", { card_id: card.id }).then(render).catch((e) => {
-      row("error", "Couldn't. " + e.message);
-      buttons(close());
-    });
+    api("/api/think/start", { card_id: card.id }).then(render).catch((e) => fail(e.message));
     return box;
   }
 
-  const FIX_LABEL = { fix_now: "Fix for me", fix_it_for_me: "Fix for me", fix_this: "Fix for me" };
-
-  // One card. opts: { via, aiLabel, onChange, compact, showNever }
+  // One problem. opts: { via, aiLabel, compact, showNever, onChange, onDismiss, onOpenRecord, onConnectAI }
+  // compact: the caller shows the title and status itself (the one-line rows on Home).
   function cardView(card, opts = {}) {
-    const via = opts.via || "fix_this";
-    let node = null;
+    let node = null, panel = null;
     const result = el("div", { class: "result", role: "status", "aria-live": "polite" });
     const steps = manualSteps(card, result, opts);
+    const actions = el("div", { class: "actions" });
     const buttons = [];
     const busy = (on) => buttons.forEach((b) => (b.disabled = on));
 
@@ -250,30 +300,29 @@ const SAB = (() => {
     }
 
     // Every problem gets "Fix for me": it opens think mode inside the card.
-    let panel = null;
     buttons.push(el("button", {
-      class: "primary",
+      class: "primary", type: "button",
       onclick: () => {
-        if (panel) return panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        node.querySelector(".actions").classList.add("hidden");
-        panel = thinkPanel(card, opts, (r) => {
-          if (r && r.outcome && r.outcome !== "refused") {
-            const worked = r.outcome === "done" || r.outcome === "went_away";
-            node.classList.add("finished");
-            node.querySelector(".chip").textContent = worked ? "Fixed" : "Didn't work";
-            node.querySelector(".sev-icon").textContent = worked ? "✓" : "!";
-            panel.querySelector(".think-bar").replaceChildren(opts.onDismiss
-              ? el("button", { type: "button", class: "link", onclick: opts.onDismiss }, "Got it") : "");
+        if (panel) return;
+        actions.classList.add("hidden");
+        node.classList.add("thinking"); // the panel says what the fix does; don't say it twice
+        result.replaceChildren();
+        result.className = "result";
+        panel = thinkPanel(card, opts, {
+          onFixed: (r) => {
+            setOutcome(node, r.outcome === "done" || r.outcome === "went_away");
             opts.onChange && opts.onChange(card, r, node);
-            return;
-          }
-          panel.remove();
-          panel = null;
-          node.querySelector(".actions").classList.remove("hidden");
+          },
+          onCancel: () => {
+            panel.remove();
+            panel = null;
+            node.classList.remove("thinking");
+            actions.classList.remove("hidden");
+          },
         });
         result.before(panel);
       },
-    }, FIX_LABEL[via]));
+    }, "Fix for me"));
     const stepsLabel = card.fix ? "I'll do it myself" : "Show me how";
     const stepsBtn = el("button", {
       type: "button", "aria-expanded": "false",
@@ -281,22 +330,22 @@ const SAB = (() => {
         const open = steps.classList.toggle("hidden") === false;
         stepsBtn.textContent = open ? "Hide steps" : stepsLabel;
         stepsBtn.setAttribute("aria-expanded", String(open));
-        if (open) steps.scrollIntoView({ block: "nearest", behavior: "smooth" });
       },
     }, stepsLabel);
     buttons.push(stepsBtn);
     buttons.push(el("button", {
+      type: "button",
       onclick: () => run(async () => {
         await api(`/api/cards/${card.id}/not_now`, {});
         result.className = "result";
-        result.textContent = "Okay. I'll ask again at the end of the day. You can still fix it now.";
+        result.textContent = "Okay. I'll ask again at the end of the day.";
         busy(false);
         opts.onChange && opts.onChange(card, { outcome: "not_now" });
       }),
     }, card.fix ? "Not now" : "Remind me later"));
     if (opts.showNever !== false) {
       buttons.push(el("button", {
-        class: "link",
+        class: "link", type: "button",
         onclick: () => run(async () => {
           await api(`/api/cards/${card.id}/never`, {});
           result.className = "result";
@@ -305,29 +354,23 @@ const SAB = (() => {
         }),
       }, "Never for this"));
     }
+    actions.append(...buttons);
 
     const fix = card.fix;
-    node = el("article", { class: "card" + (card.severity === "major" ? " major" : ""), "aria-label": card.title },
-      el("span", { class: "sev-icon", "aria-hidden": "true" }, card.severity === "major" ? "!" : "i"),
-      el("div", { class: "chip" }, card.severity === "major" ? "Needs you now" : "When you have a minute",
-        card.replay ? " · Replay" : ""),
-      el("h3", {}, card.title),
-      fix && el("p", { class: "what" }, fix.explain),
+    const major = card.severity === "major";
+    node = el("article", { class: "card", "aria-label": card.title },
+      !opts.compact && el("div", { class: "card-head" }, el("h3", {}, card.title),
+        el("span", { class: "chip " + (major ? "bad" : "warn") }, major ? "Needs you now" : "Can wait")),
+      // one sentence: what the fix is meant to do
+      fix ? el("p", { class: "what" }, el("b", {}, fix.title + ". "), fix.explain)
+        : el("p", { class: "what" }, card.recurring ? "This keeps coming back, so a quick fix isn't enough."
+          : "There's no built-in fix for this. I can look into it, or show you what to do."),
       fix && fix.warnings.map((w) => el("p", { class: "warn" }, w)),
-      fix && !fix.undo_possible && el("p", { class: "muted small" }, fix.no_undo_text),
-      !fix && el("p", { class: "what" }, card.recurring
-        ? "This keeps coming back, so a quick fix isn't enough. Here's how to get to the cause."
-        : "I can't fix this one myself, but I can show you how."),
-      card.explanation && el("div", { class: "ai-says" },
-        el("b", {}, (opts.aiLabel || "AI") + " says: "), plain(card.explanation)),
-      card.ai_note && el("p", { class: "muted small" }, card.ai_note),
-      el("details", {},
-        el("summary", {}, "More detail"),
-        el("p", { class: "muted small" }, card.proposed_by === "grok"
-          ? `${opts.aiLabel || "Grok"} chose this repair from my fixed list. I build the steps myself.`
-          : "This is one of my built-in repairs.")),
+      card.explanation && el("div", { class: "ai-says" }, el("b", {}, (opts.aiLabel || "AI") + ": "), brief(plain(card.explanation))),
+      card.ai_note && !card.explanation && el("p", { class: "caption" }, brief(card.ai_note, 140)),
+      card.auto_note && el("p", { class: "caption" }, "Autopilot didn't run this: " + card.auto_note),
       steps,
-      el("div", { class: "actions" }, buttons),
+      actions,
       result);
     return node;
   }
@@ -335,19 +378,22 @@ const SAB = (() => {
   function manualSteps(card, result, opts) {
     const box = el("div", { class: "manual hidden" });
     if (!card.manual_steps.length) {
-      box.append(el("p", { class: "muted" }, "No steps yet. Ask me about it in the chat."));
+      box.append(el("p", { class: "muted" }, "No steps yet. Ask me about it in Ask."));
       return box;
     }
     if (card.manual_steps.some((s) => s.suggested)) {
-      box.append(el("p", { class: "suggested" }, `${opts.aiLabel || "Grok"}'s suggestion. I haven't checked these.`));
+      box.append(el("p", { class: "suggested" }, `${opts.aiLabel || "The AI"}'s suggestion. I haven't checked these.`));
     }
     box.append(el("ol", {}, card.manual_steps.map((s) => el("li", {}, s.text, " ",
       s.open && el("button", {
-        class: "link",
-        onclick: () => api("/api/open", { target: s.open, card_id: card.id }).catch((e) => alert(e.message)),
+        class: "link", type: "button",
+        onclick: () => api("/api/open", { target: s.open, card_id: card.id }).catch((e) => {
+          result.className = "result couldnt";
+          result.textContent = "Couldn't. " + e.message;
+        }),
       }, "Open")))));
     const check = async (sorted) => {
-      const nodeOf = () => box.closest(".card");
+      const node = box.closest(".card");
       result.className = "result working";
       result.textContent = sorted ? "Closing it…" : "Checking again…";
       try {
@@ -362,17 +408,12 @@ const SAB = (() => {
         result.className = "result " + (fixed ? "done" : "couldnt");
         result.textContent = r.message || (fixed ? "It's fixed." : "Still happening.");
         if (fixed) {
-          const n = nodeOf();
-          if (n) {
-            n.classList.add("finished");
-            n.querySelector(".chip").textContent = "Fixed";
-            n.querySelector(".sev-icon").textContent = "✓";
-            const acts = n.querySelector(".actions");
-            if (acts) acts.classList.add("hidden");
-            if (opts.onDismiss) result.append(" ", el("button", { type: "button", class: "link", onclick: opts.onDismiss }, "Got it"));
-          }
+          setOutcome(node, true);
+          const acts = node && node.querySelector(".actions");
+          if (acts) acts.classList.add("hidden");
+          if (opts.onDismiss) result.append(" ", el("button", { type: "button", onclick: opts.onDismiss }, "Got it"));
         }
-        opts.onChange && opts.onChange(card, r, nodeOf());
+        opts.onChange && opts.onChange(card, r, node);
       } catch (e) {
         result.className = "result couldnt";
         result.textContent = "Couldn't. " + e.message;

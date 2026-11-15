@@ -73,6 +73,7 @@ class ApprovedVia(str, enum.Enum):
     FIX_THIS = "fix_this"          # card in chat
     MANUAL = "manual"              # I'll do it myself
     LAB = "lab"                    # lab-only endpoint, --demo --lab
+    AUTO = "auto"                  # Autopilot, which the person switched on; no click for this fix
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,9 @@ class FixOption:
     undo_possible: bool = False
     no_undo_text: str = "You can't undo this."
     needs_admin: bool = False
+    # May Autopilot run it with no click? "safe": yes. "unsaved": only if the person also allowed
+    # closing frozen programs. "ask": never. Admin repairs always ask, whatever this says.
+    auto: str = "ask"
 
 
 @dataclass
@@ -172,6 +176,8 @@ class Card:
     proposed_by: str = "playbook"    # playbook or grok
     explanation: str = ""            # the AI's short answer, shown on the card
     ai_note: str = ""                # why the AI couldn't answer (no key, offline, limit); the button stays
+    auto: str = ""                   # "working" while Autopilot is on it
+    auto_note: str = ""              # why Autopilot handed this one to the person
     grok: dict[str, Any] | None = None  # model, rounds, tokens, reason, replay
     result: dict[str, Any] | None = None  # filled after the person answers
 
@@ -188,6 +194,8 @@ class Card:
             "proposed_by": self.proposed_by,
             "explanation": self.explanation,
             "ai_note": self.ai_note,
+            "auto": self.auto,
+            "auto_note": self.auto_note,
             "fix": None if o is None else {
                 "title": o.title, "explain": o.explain, "warnings": o.warnings,
                 "undo_possible": o.undo_possible, "no_undo_text": o.no_undo_text, "needs_admin": o.needs_admin,

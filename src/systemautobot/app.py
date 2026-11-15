@@ -102,6 +102,11 @@ def run(argv: list[str] | None = None) -> int:
     desktop = desktop_cls(base, pipeline.runner.token, on_state=lambda needs: holder.get("tray") and holder["tray"].set_state(needs))
     pipeline.presenter = desktop
     service = AssistantService(pipeline, pipeline.tools, settings, replay_file=args.replay)
+    from .autopilot import Autopilot
+
+    # Critical problems reach Autopilot first. Off (the default), it hands every one to the person.
+    pipeline.presenter = Autopilot(pipeline, service, settings, human=desktop, tell=desktop.tell,
+                                   launcher=pipeline.tools.launcher)
     watcher = Watcher(pipeline.handle, settings)
 
     lab_token = None
@@ -144,8 +149,6 @@ def run(argv: list[str] | None = None) -> int:
                 log.exception("tick")
             stop.wait(1.0)
 
-    threading.Thread(target=ticker, name="ticker", daemon=True).start()
-
     def set_paused(value: bool) -> None:
         pipeline.runner.paused = value
         store.update(fixes_paused=value)
@@ -168,10 +171,20 @@ def run(argv: list[str] | None = None) -> int:
 
     tray = Tray(open_main=lambda: desktop.show_main(), check_now=lambda: threading.Thread(target=watcher.poll_once, daemon=True).start(),
                 is_paused=lambda: pipeline.runner.paused, set_paused=set_paused,
-                digest_now=(lambda: pipeline.show_digest()) if demo else None, quit_app=quit_app)
+                digest_now=(lambda: pipeline.show_digest()) if demo else None, quit_app=quit_app,
+                show_waiting=lambda: desktop.open_pending() or desktop.show_main(desktop.take_view()))
     holder["tray"] = tray
     tray.start()
     tray.set_state(False)
+
+    def still_waiting(card_id: str) -> bool:
+        card = pipeline.runner.cards.get(card_id)
+        return card is not None and not card.used
+
+    # Critical problems are announced as Windows notifications; a click opens the small Allow box.
+    desktop.notifier = tray.notify
+    desktop.is_open = still_waiting
+    threading.Thread(target=ticker, name="ticker", daemon=True).start()
     start_hotkey(lambda: desktop.show_main())
 
     visible = args.show or demo or not settings.setup_done

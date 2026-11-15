@@ -1,9 +1,11 @@
-"""A failing disk. Software can't fix hardware, and write-heavy repairs can make data loss
-worse, so this card never has a fix button: it says back up now."""
+"""A failing disk. Software can't repair hardware, and write-heavy repairs can make data loss worse.
+The fix does what software safely can: opens Windows Backup, then has Windows check the drive and
+repair file errors (an online scan, not a full surface scan). It never claims the drive is cured."""
 
 from __future__ import annotations
 
-from ..models import ManualStep, Problem, Signal
+from ..models import FixOption, ManualStep, Problem, Signal, StepStatus, Verification
+from ..tools.fixes import admin_step, open_page_step
 from .base import Playbook
 
 # (provider, event id) pairs Windows logs when a disk is going bad.
@@ -40,6 +42,36 @@ class DiskFailing(Playbook):
         if problem.fingerprint.endswith(":health"):
             return self._health(self.tools.checks.disk_health())
         return problem  # a failing disk doesn't heal; it stays until the person deals with it
+
+    def options(self, problem: Problem) -> list[FixOption]:
+        launcher, opener = self.tools.launcher, self.tools.open_page
+        return [FixOption(
+            title="Check the drive and open Backup",
+            explain="I'll open Windows Backup so you can save your files, then have Windows check the drive and "
+                    "repair the file errors it can. Windows will ask for permission.",
+            warnings=["Start the backup first. A worn-out drive can't be repaired by software and may stop at any time."],
+            build_steps=lambda p: [open_page_step("ms-settings:backup", opener), admin_step("check_disk", launcher)],
+            needs_admin=True, no_undo_text="Nothing to undo: this checks the drive and repairs file errors.",
+            auto="safe",
+        )]
+
+    def verify(self, problem, fresh, results):
+        if problem.fingerprint.endswith(":health"):
+            return None  # the drive's own health is read again and compared
+        health = ""
+        try:
+            disks = self.tools.checks.disk_health()
+            bad = [d for d in disks if d.get("health") and d["health"].lower() != "healthy"]
+            if bad:
+                health = f" Windows reports the drive's health as {bad[0]['health']}: plan to replace it."
+            elif disks:
+                health = " Windows reports the drive itself as healthy."
+        except Exception:  # the health read is extra information, never a reason to fail
+            pass
+        checked = any(r.status is StepStatus.DONE and r.command and "chkdsk" in r.command.lower() for r in results)
+        return Verification.CANT_CHECK, (("Windows checked the drive." if checked else "") + health
+                                         + " Software can't undo wear, so finish the backup. I'll tell you if new "
+                                           "disk errors appear.").strip()
 
     def can_recheck(self, problem: Problem) -> bool:
         return problem.fingerprint.endswith(":health")  # past error events can't be looked at again

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,8 @@ import test_ai
 from fake_ai import call, say
 from systemautobot.grok.think import ThinkManager, describe_step, tool_words
 from systemautobot.models import ApprovedVia, Signal
+
+LAB = Path(__file__).resolve().parents[1] / "lab"
 
 CRASH = Signal("event", "Application:1000", {"provider": "Application Error", "event_id": 1000,
                                              "fields": {"AppName": "crashy.exe"}},
@@ -53,7 +56,10 @@ def test_a_built_in_repair_shows_its_exact_plan_and_waits(think, fake_checks):
     assert v["status"] == "plan"
     plan = next(e for e in v["events"] if e["kind"] == "plan")
     assert plan["card_id"] == card.id and plan["steps"]
-    assert "Delete temporary files from these folders" in plan["steps"][0]["text"]
+    assert plan["explain"].startswith("I'll delete temporary files")  # one sentence on what the fix is for
+    step = plan["steps"][0]
+    assert step["text"] == "Delete temporary files from 1 folder" and len(step["detail"]) == 1  # paths on request
+    assert kinds(v) == ["plan"]  # no preamble: the plan and Allow, nothing else
     assert pipe.history.recent() == []  # nothing ran
 
 
@@ -136,3 +142,77 @@ def test_think_endpoints_need_the_token(service_world):
     client = TestClient(create_app(AppContext(pipeline=pipe, history=pipe.history, service=svc, store=None)))
     assert client.post("/api/think/start", json={"card_id": "x"}).status_code == 403
     assert client.get("/api/think/abc").status_code == 403
+
+
+def test_steps_the_ai_already_wrote_survive_a_later_rate_limit(think, history):
+    """The real case: three steps fine, then the provider's per-minute limit stops the closing request."""
+    from systemautobot.grok.transport import AIUnavailable
+
+    tm, svc, pipe, scripts, holder = think
+    card = _crash_card(pipe)
+    limit = AIUnavailable("rate_limited", "Your Groq key hit its per-minute token limit. It clears in about "
+                                          "10 minutes.", reason="Limit 8000, Used 7392", retry_after=600.0)
+    scripts += [[say("I'll check whether it keeps crashing."), call("recent_errors", {"hours": 24})],
+                [call("suggest_manual_steps", {"steps": ["Open the launcher.", "Verify the game files."]})],
+                limit]
+    s = tm.start(card)
+    tm.send(s)
+    v = _wait(s)
+    assert v["status"] == "manual", kinds(v)
+    k = kinds(v)
+    assert "error" not in k and k.index("cut_short") < k.index("manual")
+    note = next(e for e in v["events"] if e["kind"] == "cut_short")
+    assert "per-minute token limit" in note["text"] and "Limit 8000, Used 7392" in note["text"]
+    assert next(e for e in v["events"] if e["kind"] == "manual")["steps"] == ["Open the launcher.",
+                                                                              "Verify the game files."]
+    assert [m.text for m in card.manual_steps] == ["Open the launcher.", "Verify the game files."]
+    assert history.recent() == []  # still nothing changed on the PC
+
+
+def test_a_rate_limit_with_nothing_written_yet_is_reported_with_the_providers_words(think):
+    from systemautobot.grok.transport import AIUnavailable
+
+    tm, svc, pipe, scripts, holder = think
+    card = _crash_card(pipe)
+    scripts += [AIUnavailable("rate_limited", "Your Groq key hit today's limit. It clears in about 63 minutes.",
+                              reason="tokens per day (TPD): Limit 200000", retry_after=3780.0)]
+    s = tm.start(card)
+    tm.send(s)
+    v = _wait(s)
+    err = next(e for e in v["events"] if e["kind"] == "error")
+    assert v["status"] == "error" and "today's limit" in err["text"] and "said: tokens per day" in err["text"]
+
+
+def test_a_known_problem_without_a_fix_shows_what_to_do_before_offering_the_ai(think):
+    from systemautobot.models import Card, ManualStep, Problem, Severity
+
+    tm, svc, pipe, *_ = think
+    card = pipe.runner.register(Card(  # a known problem whose quick fix has been used up today
+        problem=Problem("print_queue", "print_queue:office", "A print job is stuck.", severity=Severity.MAJOR),
+        option=None, manual_steps=[ManualStep("Turn the printer off and on."), ManualStep("Press Fix for me.")]))
+    v = tm.start(card).view()
+    assert v["status"] == "consent" and kinds(v) == ["manual", "consent"]
+    assert v["events"][0]["steps"] == ["Turn the printer off and on."]
+
+
+def test_the_failing_disk_plan_says_what_each_step_does(think):
+    from systemautobot.watcher import replay
+
+    tm, svc, pipe, *_ = think
+    replay(LAB / "replay" / "S9_disk_failing.xml", pipe.handle)
+    card = next(c for c in pipe.runner.cards.values() if c.problem.playbook_id == "disk_failing")
+    v = tm.start(card).view()
+    plan = v["events"][0]
+    assert v["status"] == "plan" and plan["admin"] and plan["explain"].startswith("I'll open Windows Backup")
+    assert [s["text"] for s in plan["steps"]] == [
+        "Open Windows Backup", "Have Windows check the drive and repair file errors (online scan, no restart)"]
+    assert plan["steps"][1]["commands"][0].lower().startswith("chkdsk.exe") and "/scan" in plan["steps"][1]["commands"][0]
+
+
+def test_an_unfamiliar_error_does_not_tell_you_to_press_the_button_you_just_pressed(think):
+    tm, svc, pipe, *_ = think
+    svc.key_loader = lambda p: None
+    card = _crash_card(pipe)
+    v = tm.start(card).view()
+    steps = next(e for e in v["events"] if e["kind"] == "manual")["steps"]
+    assert steps and not any(s.startswith("Press Fix for me") for s in steps)

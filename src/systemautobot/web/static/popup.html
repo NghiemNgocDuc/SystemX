@@ -7,37 +7,59 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="popup">
+<!-- The small box behind a notification: what's wrong, what the fix does, Allow or Not now. -->
 <div class="app">
   <div id="cards"></div>
-  <div class="row" style="justify-content:flex-end;margin-top:8px">
-    <button id="open-main" class="link">Open SystemAutoBot</button>
-    <button id="close" class="link">Close</button>
+  <div class="row" style="justify-content:flex-end">
+    <button id="open-main" class="link" type="button">Open SystemAutoBot</button>
+    <button id="close" class="link" type="button">Close</button>
   </div>
 </div>
 <script src="/static/common.js"></script>
 <script>
 "use strict";
 (async () => {
-  const { api, cardView } = SAB;
+  const { api, el, thinkPanel } = SAB;
   const key = SAB.params.get("key") || "";
   const ids = (SAB.params.get("cards") || "").split(",").filter(Boolean);
   const close = () => api("/api/ui/close_popup", { key }).catch(() => window.close());
   document.getElementById("close").onclick = close;
   document.getElementById("open-main").onclick = () => api("/api/ui/open_main", { view: "home" });
   const st = await api("/api/state");
-  const box = document.getElementById("cards");
-  if (ids.length > 1) box.append(SAB.el("h2", {}, `${ids.length} things need you`));
+  const list = document.getElementById("cards");
+  const leave = (node) => {
+    node.remove();
+    if (!list.querySelector(".ask-box")) close();
+  };
   for (const id of ids) {
-    try {
-      const card = await api("/api/cards/" + id);
-      box.append(cardView(card, { via: "fix_now", aiLabel: st.ai.label,
-        onOpenRecord: () => api("/api/ui/open_main", { view: "activity" }),
-        onConnectAI: () => api("/api/ui/open_main", { view: "setup" }),
-        onDismiss: () => { if (ids.length === 1) close(); },
-        onChange: (c, r) => { if (ids.length === 1 && (r.outcome === "not_now" || r.outcome === "never")) setTimeout(close, 1500); } }));
-    } catch (_) { /* already handled elsewhere */ }
+    let card;
+    try { card = await api("/api/cards/" + id); } catch (_) { continue; } // already handled elsewhere
+    if (card.used) continue;
+    const major = card.severity === "major";
+    const chip = el("span", { class: "chip " + (major ? "bad" : "warn") }, major ? "Needs you now" : "Can wait");
+    const box = el("article", { class: "ask-box", "aria-label": card.title },
+      el("div", { class: "card-head" }, el("h3", {}, card.title), chip),
+      card.auto_note ? el("p", { class: "caption" }, "Autopilot didn't run this: " + card.auto_note) : null);
+    box.append(thinkPanel(card, {
+      via: "fix_now", aiLabel: st.ai.label, cancelLabel: "Not now",
+      onOpenRecord: () => api("/api/ui/open_main", { view: "activity" }),
+      onConnectAI: () => api("/api/ui/open_main", { view: "setup" }),
+      onDismiss: () => leave(box),
+    }, {
+      onFixed: (r) => {
+        const worked = r.outcome === "done" || r.outcome === "went_away";
+        chip.textContent = worked ? "Fixed" : "Didn't work";
+        chip.className = "chip " + (worked ? "ok" : "bad");
+      },
+      // Not now: it waits for the end-of-day list, and stays on Home.
+      onCancel: async () => {
+        await api(`/api/cards/${card.id}/not_now`, {}).catch(() => {});
+        leave(box);
+      },
+    }));
+    list.append(box);
   }
-  if (!box.children.length) close();
+  if (!list.children.length) close();
 })();
 </script>
 </body>

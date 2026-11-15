@@ -77,5 +77,6 @@ def build(rec: dict[str, Any] | None) -> dict[str, Any] | None:
         "freed": size(freed) if freed else "",
         "verification": verdict,
         "verdict": VERDICT.get(verdict or "", ""),
+        "detail": (checks[-1].get("detail") or "") if checks else "",
         "restart": verdict == "waiting_restart",
     }

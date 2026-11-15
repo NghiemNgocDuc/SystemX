@@ -21,6 +21,8 @@ from ..playbooks.base import Toolbox
 from ..safety.guard import GuardRefusal
 from ..safety.redact import redact
 from ..tools.fixes import (
+    SAFE_PAGES,
+    UNATTENDED,
     admin_step,
     close_program_step,
     command_step,
@@ -32,12 +34,7 @@ from ..tools.fixes import (
 MAX_ROWS = 20
 MAX_TEXT = 500
 
-ALLOWED_PAGES = {
-    "ms-settings:storagesense", "ms-settings:network-status", "ms-settings:network-wifi",
-    "ms-settings:windowsupdate", "ms-settings:appsfeatures", "ms-settings:startupapps",
-    "ms-settings:sound", "ms-settings:printers", "ms-settings:dateandtime",
-    "ms-settings:troubleshoot", "ms-settings:backup", "windowsdefender:", "devmgmt.msc",
-}
+ALLOWED_PAGES = set(SAFE_PAGES)
 
 
 # ---- fixes Grok may propose -----------------------------------------------------------
@@ -53,7 +50,8 @@ def _admin(entry_id: str, title: str, explain: str, *, undo=False) -> FixEntry:
     def build(tools: Toolbox, args: dict) -> FixOption:
         return FixOption(title=title, explain=explain + " Windows will ask for permission.",
                          build_steps=lambda p: [admin_step(entry_id, tools.launcher)],
-                         undo_possible=undo, needs_admin=True)
+                         undo_possible=undo, needs_admin=True,
+                         auto="safe" if entry_id in UNATTENDED else "ask")
     return FixEntry(f"(admin) {explain}", build)
 
 
@@ -66,6 +64,7 @@ def _close_and_reopen(tools: Toolbox, args: dict) -> FixOption:
         explain=f"I'll close {display} and open it again.",
         warnings=[f"Anything you haven't saved in {display} will be lost."],
         build_steps=lambda p: [close_program_step(tools.guard, args["pid"], name), start_program_step(exe, display)],
+        auto="unsaved",
     )
 
 
@@ -74,7 +73,7 @@ FIX_ENTRIES: dict[str, FixEntry] = {
         "Delete temporary files and app caches Windows rebuilds. No undo.",
         lambda t, a: FixOption("Delete temporary files",
                                "I'll delete temporary files and app caches that Windows and your apps rebuild on their own.",
-                               build_steps=lambda p: [delete_temp_step(t.guard, t.temp_roots)])),
+                               build_steps=lambda p: [delete_temp_step(t.guard, t.temp_roots)], auto="safe")),
     "empty_recycle_bin": FixEntry(
         "Empty the Recycle Bin. No undo.",
         lambda t, a: FixOption("Empty the Recycle Bin", "I'll permanently delete what's in the Recycle Bin.",
@@ -85,7 +84,7 @@ FIX_ENTRIES: dict[str, FixEntry] = {
         lambda t, a: FixOption("Refresh the connection",
                                "I'll clear saved web addresses and ask the router for a fresh address.",
                                build_steps=lambda p: [command_step("flush_dns"), command_step("renew_address")],
-                               no_undo_text="Nothing to undo: this only refreshes.")),
+                               no_undo_text="Nothing to undo: this only refreshes.", auto="safe")),
     "close_and_reopen_program": FixEntry(
         "Close one of the person's programs by pid and open it again. Unsaved work is lost.",
         _close_and_reopen, needs_pid=True),
@@ -99,6 +98,8 @@ FIX_ENTRIES: dict[str, FixEntry] = {
                                     "I'll restart the Windows print service."),
     "reset_windows_update": _admin("reset_windows_update", "Reset Windows Update",
                                    "I'll reset the Windows Update components."),
+    "check_disk": _admin("check_disk", "Check the drive for errors",
+                         "I'll have Windows check the drive and repair the file errors it can."),
     "dns_automatic": _admin("dns_automatic", "Switch DNS back to automatic",
                             "I'll switch DNS servers that were set by hand back to automatic.", undo=True),
 }

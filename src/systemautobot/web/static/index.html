@@ -69,7 +69,7 @@
 <div id="shell" class="shell hidden">
   <nav class="nav" aria-label="SystemAutoBot">
     <div class="brand">
-      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="15" fill="#ffffff" stroke="#141218" stroke-width="5"/><path d="M19 21h26v5H24v4h21v14H19v-5h21v-4H19z" fill="#141218"/></svg>
+      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="15" fill="#2f5d9e"/><path d="M19 21h26v5H24v4h21v14H19v-5h21v-4H19z" fill="#ffffff"/></svg>
       <span>SystemAutoBot</span>
     </div>
     <button data-view="home" aria-current="page">
@@ -111,7 +111,10 @@
         </div>
         <div class="tiles" id="tiles" aria-label="At a glance"></div>
         <h2 class="section-title" id="needs-h">Needs you</h2>
-        <div id="cards"></div>
+        <div id="cards" class="group"></div>
+        <div class="section-head"><h2 class="section-title">Recent activity</h2><span id="recent-sum" class="caption"></span>
+          <span class="grow"></span><button id="see-activity" class="link" type="button">See all</button></div>
+        <div class="group"><ul id="recent" class="list"></ul></div>
       </section>
 
       <section id="view-ask" class="hidden" aria-labelledby="ask-h">
@@ -164,12 +167,30 @@
               <option value="100">100 a day</option><option value="0">No limit</option></select></div>
         </div>
 
+        <h2 class="section-title">Autopilot</h2>
+        <div class="group">
+          <div class="srow"><div class="grow"><div class="title">Fix critical problems automatically</div>
+            <div class="sub">No click for safe repairs: clearing temporary files, refreshing the connection, restarting the taskbar.
+              I tell you right after, and every step is in Activity. For an error I don't recognize, its summary goes to your AI.
+              Repairs that need administrator rights, or that could lose your work, still ask.</div></div>
+            <label class="switch"><input id="autopilot" type="checkbox" aria-label="Fix critical problems automatically"><span></span></label></div>
+          <div class="srow"><div class="grow"><div class="title">Also close frozen programs</div>
+            <div class="sub">Autopilot may close and reopen a program that stopped responding. Anything unsaved in it is lost.</div></div>
+            <label class="switch"><input id="autopilot-frozen" type="checkbox" aria-label="Also close frozen programs"><span></span></label></div>
+          <div class="srow"><div class="grow"><div class="title">Also run a few admin repairs without the Windows prompt</div>
+            <div class="sub">Set the clock, update virus definitions, turn the firewall back on, restart the print service, check the drive.
+              You set this up once from an administrator account: Windows asks one time. After that, any program running in your
+              Windows account could start these five repairs, and nothing else. Switching it off removes the setup.</div>
+            <div id="autopilot-admin-status" class="status-line" role="status" aria-live="polite"></div></div>
+            <label class="switch"><input id="autopilot-admin" type="checkbox" aria-label="Also run a few admin repairs without the Windows prompt"><span></span></label></div>
+        </div>
+
         <h2 class="section-title">What I watch for</h2>
         <div class="group" id="watch-list"></div>
 
         <h2 class="section-title">When I speak up</h2>
         <div class="group">
-          <div class="srow"><div class="grow"><div class="title">Low space warning</div><div class="sub">Big problems still pop up right away.</div></div>
+          <div class="srow"><div class="grow"><div class="title">Low space warning</div><div class="sub">Critical problems still send a notification right away.</div></div>
             <select id="warn" aria-label="Low space warning"><option value="10">10 GB</option><option value="20">20 GB</option><option value="40">40 GB</option></select></div>
           <div class="srow"><div class="grow"><div class="title">End-of-day list</div><div class="sub">Small problems wait for this time.</div></div>
             <input id="eod" type="time" aria-label="End-of-day list time"></div>

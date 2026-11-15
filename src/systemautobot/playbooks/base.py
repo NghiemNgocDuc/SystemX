@@ -22,6 +22,7 @@ class Toolbox:
     settings: Settings
     checks: Any = real_checks          # module or object with the same functions
     temp_roots: list[Path] = field(default_factory=list)
+    open_page: Any = None              # opens a Windows page; None means the real one
 
 
 class Playbook:

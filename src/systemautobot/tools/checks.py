@@ -32,6 +32,12 @@ def disk_space(drive: str = "C:\\") -> dict[str, Any]:
     }
 
 
+def in_front(hwnd, foreground, ghost) -> bool:
+    """Is this frozen window the one the person is looking at? Either it is the foreground window,
+    or its ghost stand-in is. Without the second check a frozen program in front never counts."""
+    return bool(foreground) and (hwnd == foreground or (bool(ghost) and ghost == foreground))
+
+
 def hung_windows() -> list[dict[str, Any]]:
     """Visible top-level windows Windows marks as Not Responding."""
     if sys.platform != "win32":
@@ -42,11 +48,20 @@ def hung_windows() -> list[dict[str, Any]]:
     user32 = ctypes.windll.user32
     foreground = user32.GetForegroundWindow()
     found: list[dict[str, Any]] = []
+    try:  # Windows swaps a frozen window for a "ghost" stand-in, and the ghost is what sits in front
+        ghost_of = user32.GhostWindowFromHungWindow
+        ghost_of.restype, ghost_of.argtypes = wintypes.HWND, [wintypes.HWND]
+    except AttributeError:
+        ghost_of = None
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def _each(hwnd, _):
         if not user32.IsWindowVisible(hwnd) or not user32.IsHungAppWindow(hwnd):
             return True
+        cls = ctypes.create_unicode_buffer(16)
+        user32.GetClassNameW(hwnd, cls, 16)
+        if cls.value == "Ghost":
+            return True  # Windows' stand-in for a frozen window, not a second frozen program
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         length = user32.GetWindowTextLengthW(hwnd)
@@ -59,7 +74,8 @@ def hung_windows() -> list[dict[str, Any]]:
             name, exe = "unknown", ""
         found.append({
             "hwnd": int(hwnd), "pid": pid.value, "name": name, "exe": exe,
-            "title": buf.value[:120], "foreground": hwnd == foreground,
+            "title": buf.value[:120],
+            "foreground": in_front(hwnd, foreground, ghost_of(hwnd) if ghost_of else None),
         })
         return True
 

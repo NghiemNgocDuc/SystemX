@@ -8,9 +8,9 @@ let firstRunSetup = false;
 let view = "home";
 
 const ICON = {
-  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="#141218" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
-  needs: '<svg viewBox="0 0 24 24" fill="none" stroke="#141218" stroke-width="3" stroke-linecap="round"><path d="M12 6v8M12 18h.01"/></svg>',
-  paused: '<svg viewBox="0 0 24 24" fill="#141218"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
+  needs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 6v8M12 18h.01"/></svg>',
+  paused: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
 };
 
 // ---- navigation ------------------------------------------------------------------------------
@@ -24,7 +24,7 @@ function show(next) {
     if (b.dataset.view === next) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   $("page").scrollTop = 0;
-  if (next === "home") loadGlance();
+  if (next === "home") { loadGlance(); loadRecent(); }
   if (next === "activity") loadHistory();
   if (next === "settings") fillSettings();
   if (next === "ask") fillAsk();
@@ -61,45 +61,84 @@ function renderHero() {
     : n ? `${n} thing${n > 1 ? "s" : ""} need${n > 1 ? "" : "s"} you` : "Your PC is fine";
   const last = glance && glance.last_checked ? `Last checked ${when(glance.last_checked)}` : "Checking now";
   const watching = glance ? ` · Watching ${glance.watching} kinds of problems` : "";
-  $("hero-sub").textContent = state.paused ? "I'm still checking, but I won't change anything." : last + watching;
+  const pilot = state.settings.autopilot ? " · Autopilot on" : "";
+  $("hero-sub").textContent = state.paused ? "I'm still checking, but I won't change anything." : last + watching + pilot;
 }
 
+// ---- home: what needs you (one line each), then recent history ----------------------------------------
+
 let shownCards = "";
-const finished = new Map(); // card id -> its node, kept after a fix so the report stays readable
-const liveNodes = new Map(); // card id -> node, so a refresh never rebuilds a card someone is reading
+const finished = new Map(); // card id -> its row, kept after a fix so the result stays readable
+const liveRows = new Map(); // card id -> row, so a refresh never rebuilds one someone has open
+const rowLabels = new Map(); // card id -> updates that row's status word
+function needRow(c) {
+  const major = c.severity === "major";
+  const chip = el("span", { class: "chip" });
+  const label = (card) => {  // called on every refresh, so "Autopilot is on it" comes and goes
+    if (finished.has(c.id)) return;
+    chip.textContent = card.auto === "working" ? "Autopilot is on it" : major ? "Needs you now" : "Can wait";
+    chip.className = "chip " + (card.auto === "working" ? "" : major ? "bad" : "warn");
+  };
+  label(c);
+  rowLabels.set(c.id, label);
+  const row = el("details", { class: "need" });
+  const card = cardView(c, { compact: true, via: "fix_this", aiLabel: state.ai.label,
+    onOpenRecord: (id) => { show("activity"); detail(id); },
+    onDismiss: () => { finished.delete(c.id); liveRows.delete(c.id); shownCards = ""; renderCards(); },
+    onConnectAI: () => openSetup(false),
+    onChange: (_card, r) => {
+      // Keep the row (and what happened) on screen after a fix, or after Check again found it fixed.
+      const done = r.outcome ? !["refused", "not_now", "never"].includes(r.outcome) : r.verification === "fixed";
+      if (done) {
+        const worked = r.outcome ? r.outcome === "done" || r.outcome === "went_away" : true;
+        chip.textContent = worked ? "Fixed" : "Didn't work";
+        chip.className = "chip " + (worked ? "ok" : "bad");
+        finished.set(c.id, row);
+      }
+      setTimeout(() => { refresh(); loadGlance(); loadRecent(); }, 1500);
+    } });
+  row.append(el("summary", {}, el("span", { class: "t" }, c.title), chip), card);
+  return row;
+}
 function renderCards() {
   const live = state.cards.filter((c) => !finished.has(c.id));
+  for (const c of live) if (rowLabels.has(c.id)) rowLabels.get(c.id)(c);
   const key = JSON.stringify([...finished.keys(), ...live.map((c) => c.id)]);
-  if (key === shownCards) return; // never wipe a card someone is using
+  if (key === shownCards) return; // never rebuild a row someone is using
   shownCards = key;
-  const box = $("cards");
-  if (!live.length && finished.size) return box.replaceChildren(...finished.values());
-  if (!state.cards.length) {
-    const icon = el("div", { "aria-hidden": "true" });
-    icon.innerHTML = ICON.ok;
-    box.replaceChildren(el("div", { class: "panel empty" }, icon, el("h3", {}, "Nothing needs you"),
-      el("p", { class: "muted small", style: "margin-top:4px" }, "I'll pop up if something big breaks, and keep small things for the end of the day.")));
+  for (const id of [...liveRows.keys()]) {
+    if (!finished.has(id) && !live.some((c) => c.id === id)) { liveRows.delete(id); rowLabels.delete(id); }
+  }
+  const rows = live.map((c) => {
+    if (!liveRows.has(c.id)) liveRows.set(c.id, needRow(c));
+    return liveRows.get(c.id);
+  });
+  if (!rows.length && !finished.size) {
+    $("cards").replaceChildren(el("p", { class: "empty" },
+      "Nothing needs you. A critical problem shows up as a Windows notification. Small ones wait for the end-of-day list."));
     return;
   }
-  const nodes = live.map((c) => {
-    if (liveNodes.has(c.id)) return liveNodes.get(c.id);
-    const n = cardView(c, { via: "fix_this", aiLabel: state.ai.label,
-      onOpenRecord: (id) => { show("activity"); detail(id); },
-      onDismiss: () => { finished.delete(c.id); liveNodes.delete(c.id); shownCards = ""; renderCards(); },
-      onReplace: (id, n) => liveNodes.set(id, n),
-      onConnectAI: () => openSetup(false),
-      onChange: (card, r, node) => {
-        // Keep the card (and what happened) on screen after a fix, or after Check again found it fixed.
-        const done = r.outcome ? !["refused", "not_now", "never"].includes(r.outcome) : r.verification === "fixed";
-        if (node && done) finished.set(card.id, node);
-        setTimeout(() => { refresh(); loadGlance(); }, 1500);
-      } });
-    liveNodes.set(c.id, n);
-    return n;
-  });
-  for (const id of [...liveNodes.keys()]) if (!finished.has(id) && !live.some((c) => c.id === id)) liveNodes.delete(id);
-  box.replaceChildren(...finished.values(), ...nodes);
+  $("cards").replaceChildren(...finished.values(), ...rows);
 }
+
+function historyRow(h) {
+  return el("li", {},
+    el("button", { class: "hrow", type: "button", onclick: () => { if (view !== "activity") show("activity"); detail(h.id); } },
+      el("span", { class: "ic " + (h.outcome || ""), "aria-hidden": "true" }, MARK[h.outcome] || "…"),
+      el("span", { class: "t" }, h.summary || h.title,
+        el("div", { class: "caption" }, `${OUTCOME[h.outcome] || "In progress"} · ${h.approved_via === "auto" ? "Autopilot, no click" : BY[h.fixed_by] || h.fixed_by}`)),
+      el("span", { class: "when" }, when(h.started_at))));
+}
+async function loadRecent() {
+  let r;
+  try { r = await api("/api/history?limit=50"); } catch (_) { return; }
+  const weekAgo = Date.now() - 7 * 864e5;
+  const fixed = r.items.filter((h) => h.outcome === "done" && new Date(h.started_at).getTime() >= weekAgo).length;
+  $("recent-sum").textContent = fixed ? `${fixed} fixed this week` : "";
+  $("recent").replaceChildren(...(r.items.length ? r.items.slice(0, 5).map(historyRow)
+    : [el("li", { class: "empty-row" }, "No fixes yet. Everything I change will be listed here.")]));
+}
+$("see-activity").addEventListener("click", () => show("activity"));
 
 // ---- at a glance ---------------------------------------------------------------------------------
 
@@ -358,15 +397,10 @@ const BY = { playbook: "I fixed it", grok: "AI-chosen repair", person: "You fixe
 
 async function loadHistory() {
   const q = $("search").value.trim();
+  $("history-detail").classList.add("hidden"); // before the wait, so it can't hide a record opened meanwhile
   const r = await api("/api/history" + (q ? "?q=" + encodeURIComponent(q) : ""));
-  $("history-detail").classList.add("hidden");
-  $("history").replaceChildren(...(r.items.length ? r.items.map((h) => el("li", {},
-    el("button", { class: "hrow", onclick: () => detail(h.id) },
-      el("span", { class: "ic " + (h.outcome || "") , "aria-hidden": "true" }, MARK[h.outcome] || "…"),
-      el("span", { class: "t" }, h.summary || h.title,
-        el("div", { class: "caption" }, `${OUTCOME[h.outcome] || "In progress"} · ${BY[h.fixed_by] || h.fixed_by}`)),
-      el("span", { class: "when" }, when(h.started_at)))))
-    : [el("li", { class: "empty" }, q ? "Nothing in the history touched that." : "No fixes yet. They'll show up here, step by step.")]));
+  $("history").replaceChildren(...(r.items.length ? r.items.map(historyRow)
+    : [el("li", { class: "empty-row" }, q ? "Nothing in the history touched that." : "No fixes yet. They'll show up here, step by step.")]));
 }
 let searchTimer;
 $("search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadHistory, 300); });
@@ -381,7 +415,8 @@ async function detail(id) {
     el("dl", { class: "kv" },
       el("dt", {}, "When"), el("dd", {}, when(h.started_at)),
       el("dt", {}, "Who"), el("dd", {}, BY[h.fixed_by] || h.fixed_by),
-      el("dt", {}, "Approved with"), el("dd", {}, (h.approved_via || "no approval needed").replaceAll("_", " ")),
+      el("dt", {}, "Approved with"), el("dd", {}, h.approved_via === "auto" ? "Autopilot (no click; you switched it on in Settings)"
+        : (h.approved_via || "no approval needed").replaceAll("_", " ")),
       el("dt", {}, "Checked again"), el("dd", {}, ((h.verifications[0] && h.verifications[0].result) || "not yet").replaceAll("_", " ")),
       h.grok_model && el("dt", {}, "AI"), h.grok_model && el("dd", {}, `${h.grok_model}, ${h.grok_rounds} rounds, ${h.grok_tokens} tokens`)),
     el("h3", { style: "margin-top:16px" }, "Steps"),
@@ -437,6 +472,11 @@ function fillSettings() {
   $("keep").value = s.history_days;
   $("demo-row").classList.toggle("hidden", !s.demo);
   $("ai-limit").value = String(s.ai_daily_limit);
+  $("autopilot").checked = !!s.autopilot;
+  $("autopilot-frozen").checked = !!s.autopilot_close_frozen;
+  $("autopilot-frozen").disabled = !s.autopilot;
+  $("autopilot-admin").checked = !!s.autopilot_admin;
+  $("autopilot-admin").disabled = !s.autopilot && !s.autopilot_admin;
   api("/api/ai_usage").then((u) => {
     const lim = u.limit ? ` of ${u.limit}` : "";
     $("ai-usage").textContent = `Today: ${u.day.calls}${lim} questions, ${u.day.tokens.toLocaleString()} tokens. ` +
@@ -447,6 +487,25 @@ function fillSettings() {
     el("button", { onclick: () => setSetting({ forget_never: fp }) }, "Remove")))
     : [el("li", { class: "srow muted" }, "Nothing remembered. Choosing Never for this on a card adds it here.")]));
 }
+$("autopilot").addEventListener("change", () => setSetting({ autopilot: $("autopilot").checked }));
+$("autopilot-frozen").addEventListener("change", () => setSetting({ autopilot_close_frozen: $("autopilot-frozen").checked }));
+$("autopilot-admin").addEventListener("change", async () => {
+  const box = $("autopilot-admin"), line = $("autopilot-admin-status");
+  const on = box.checked;
+  box.disabled = true;
+  line.className = "status-line";
+  line.textContent = on ? "Windows will ask for permission once…" : "Removing the setup. Windows will ask once…";
+  try {
+    const r = await api("/api/autopilot_admin", { on });
+    line.className = "status-line " + (r.ok ? "ok" : "bad");
+    line.textContent = r.message;
+  } catch (e) {
+    line.className = "status-line bad";
+    line.textContent = e.message;
+  }
+  await refresh();
+  fillSettings();
+});
 $("warn").addEventListener("change", () => setSetting({ warn_free_gb: Number($("warn").value) }));
 $("eod").addEventListener("change", () => setSetting({ end_of_day: $("eod").value }));
 $("keep").addEventListener("change", () => setSetting({ history_days: Number($("keep").value) }));
@@ -478,6 +537,6 @@ $("run-doctor").addEventListener("click", async () => {
   if (state.needs_setup) openSetup(true);
   else show(SAB.params.get("view") || "home");
   setInterval(refresh, 4000);
-  setInterval(() => { if (view === "home") loadGlance(); }, 15000);
+  setInterval(() => { if (view === "home") { loadGlance(); loadRecent(); } }, 15000);
 })();
 window.sabShow = (v) => (v === "setup" ? openSetup(false) : show(v)); // called by the tray

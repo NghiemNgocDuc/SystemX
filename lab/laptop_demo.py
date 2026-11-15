@@ -45,7 +45,7 @@ def lab_call(path: str, body: dict | None = None):
 def replay(kind: str) -> str:
     routes = lab_call("/api/lab/replay", {"xml": EVENTS[kind].read_text(encoding="utf-8")})["routes"]
     if "popup" in routes:
-        return "A popup should appear now (bottom right)."
+        return "A Windows notification appears (bottom right). Click it to see the fix."
     if "digest" in routes:
         return "Saved for the end-of-day list. Press 'Show end-of-day list'."
     if "duplicate" in routes:
@@ -55,7 +55,8 @@ def replay(kind: str) -> str:
 
 def freeze() -> str:
     subprocess.Popen([sys.executable, str(LAB / "apps" / "hangme.py"), "--freeze"])
-    return "hangme opens, then freezes after 3 s. The popup comes about 30 to 40 s later."
+    return ("hangme opens, then freezes after 3 s. About 15 s later a Windows notification appears. "
+            "Click it: a small box says what the fix does and asks Allow or Not now.")
 
 
 def error_box() -> str:
@@ -87,8 +88,8 @@ def tidy() -> str:
 
 
 BUTTONS = [
-    ("1  Freeze a program", "Major popup with an unsaved-work warning", freeze),
-    ("2  Disk is failing (recorded events)", "Major popup, deliberately no fix button", lambda: replay("disk")),
+    ("1  Freeze a program", "Critical: notification, then Allow or Not now", freeze),
+    ("2  Disk is failing (recorded events)", "Critical: notification; the fix opens Backup and checks the drive", lambda: replay("disk")),
     ("E  Show an error message box", "A real error box: the app notices it and offers to explain", error_box),
     ("3  An app crashed (recorded event)", "Small problem, waits for the end of day", lambda: replay("crash")),
     ("4  Malicious error message", "Text that tries to command the AI", lambda: replay("inject")),
@@ -100,10 +101,10 @@ BUTTONS = [
 root = tk.Tk()
 root.title("SystemAutoBot laptop demo")
 root.geometry("460x660")
-root.configure(bg="#ffd43b")
-tk.Label(root, text="Laptop demo (safe)", font=("Segoe UI", 16, "bold"), bg="#ffd43b").pack(pady=(14, 2))
+root.configure(bg="#f4f4f6")
+tk.Label(root, text="Laptop demo (safe)", font=("Segoe UI", 16, "bold"), bg="#f4f4f6").pack(pady=(14, 2))
 tk.Label(root, text="Nothing here changes your PC. Recorded events stand in\nfor problems that can't be caused safely.",
-         font=("Segoe UI", 9), bg="#ffd43b").pack(pady=(0, 10))
+         font=("Segoe UI", 9), bg="#f4f4f6").pack(pady=(0, 10))
 status = tk.StringVar(value="Ready. Start the app with --demo --lab first.")
 
 
@@ -115,11 +116,11 @@ def run(fn):
 
 
 for label, hint, fn in BUTTONS:
-    f = tk.Frame(root, bg="#ffd43b")
+    f = tk.Frame(root, bg="#f4f4f6")
     f.pack(fill="x", padx=14, pady=4)
     tk.Button(f, text=label, anchor="w", font=("Segoe UI", 11, "bold"), bg="#ffffff", relief="solid", bd=2,
               command=lambda fn=fn: run(fn)).pack(fill="x")
-    tk.Label(f, text=hint, font=("Segoe UI", 9), bg="#ffd43b", anchor="w").pack(fill="x")
+    tk.Label(f, text=hint, font=("Segoe UI", 9), bg="#f4f4f6", anchor="w").pack(fill="x")
 tk.Label(root, textvariable=status, wraplength=420, justify="left", font=("Segoe UI", 10),
          bg="#ffffff", relief="solid", bd=2, padx=8, pady=8).pack(fill="x", padx=14, pady=12)
 root.mainloop()

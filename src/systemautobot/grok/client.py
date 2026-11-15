@@ -13,6 +13,8 @@ from .tools import TOOL_SCHEMAS, ToolSession
 from .transport import AIUnavailable, Transport
 
 MAX_ROUNDS = 8
+MAX_WAIT = 65.0        # a per-minute limit clears within a minute; a longer wait goes back to the person
+MAX_TOTAL_WAIT = 150.0  # across one question
 Observer = Callable[[str, dict], None]
 
 SYSTEM_PROMPT = """You are the helper inside SystemAutoBot, a Windows PC care app.
@@ -57,6 +59,7 @@ class AssistantClient:
         self.max_rounds = max_rounds
         self.sleep = sleep
         self.use_reasoning = use_reasoning
+        self._waited = 0.0
 
     def _request(self, items: list[dict], effort: str) -> dict:
         req: dict[str, Any] = {"model": self.model, "input": items, "tools": TOOL_SCHEMAS, "store": False}
@@ -65,19 +68,38 @@ class AssistantClient:
             req["reasoning"] = {"effort": effort}
         return req
 
-    def _call(self, items: list[dict], effort: str) -> dict:
-        for attempt in (1, 2):
+    def _pause(self, seconds: float, stop: Callable[[], bool] | None) -> None:
+        """Wait in short slices, so Stop works during the wait."""
+        left = seconds
+        while left > 0:
+            if stop and stop():
+                raise AIUnavailable("stopped", "You stopped it.")
+            step = min(0.5, left)
+            self.sleep(step)
+            left -= step
+
+    def _call(self, items: list[dict], effort: str, see: Observer | None = None,
+              stop: Callable[[], bool] | None = None) -> dict:
+        retried = False
+        while True:
             try:
                 return self.transport.create(**self._request(items, effort))
             except AIUnavailable as e:
                 if e.kind == "bad_request" and self.use_reasoning:
                     self.use_reasoning = False  # this model doesn't take reasoning settings
                     continue
-                if e.kind in ("rate_limited", "server") and attempt == 1:
-                    self.sleep(2.0)
-                    continue
+                if e.kind in ("rate_limited", "server") and not retried:
+                    # One retry. A rate limit says how long it lasts: wait that long, not a guess.
+                    asked = getattr(e, "retry_after", None)
+                    wait = 2.0 if asked is None else asked + 1.0
+                    if wait <= MAX_WAIT and self._waited + wait <= MAX_TOTAL_WAIT:
+                        retried = True
+                        self._waited += wait
+                        if see and wait >= 3:
+                            see("wait", {"seconds": wait, "text": e.message})
+                        self._pause(wait, stop)
+                        continue
                 raise
-        return self.transport.create(**self._request(items, effort))
 
     def run(self, session: ToolSession, user_text: str, history: list[dict] | None = None,
             effort: str = "high", *, observer: Observer | None = None,
@@ -89,13 +111,14 @@ class AssistantClient:
         items += history or []
         items.append({"role": "user", "content": redact(user_text)})
         tokens = 0
+        self._waited = 0.0
         for rnd in range(1, self.max_rounds + 1):
             if stop and stop():
                 return Outcome("You stopped it. I didn't change anything.", rnd - 1, tokens, self.model,
                                self.transport.replay, AIUnavailable("stopped", "You stopped it."), session.calls)
             see("round", {"n": rnd, "max": self.max_rounds})
             try:
-                resp = self._call(items, effort)
+                resp = self._call(items, effort, see, stop)
             except AIUnavailable as e:
                 return Outcome(e.message, rnd - 1, tokens, self.model, self.transport.replay, e, session.calls)
             tokens += int((resp.get("usage") or {}).get("total_tokens") or 0)

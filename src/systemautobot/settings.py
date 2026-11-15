@@ -36,19 +36,23 @@ class Settings:
     unknown_per_digest: int = 5
     history_days: int = 365
     fixes_paused: bool = False
+    autopilot: bool = False                # fix critical problems with no click (safe repairs only)
+    autopilot_close_frozen: bool = False   # ...including closing frozen programs (unsaved work is lost)
+    autopilot_admin: bool = False          # ...and a few admin repairs with no Windows prompt (set up once)
+    auto_fixes_per_hour: int = 3
     never: list[str] = field(default_factory=list)   # remembered "Never for this"
     off: list[str] = field(default_factory=list)     # kinds of problems the person doesn't want handled
     demo: bool = False
 
     @classmethod
     def demo_mode(cls) -> "Settings":
-        return cls(poll_interval=timedelta(seconds=10), stuck_print_after=timedelta(seconds=30),
-                   slow_check_interval=timedelta(seconds=60), demo=True)
+        return cls(poll_interval=timedelta(seconds=5), stuck_print_after=timedelta(seconds=30),
+                   hung_after=timedelta(seconds=10), slow_check_interval=timedelta(seconds=60), demo=True)
 
 
 # Only these are saved; the rest are code defaults or per-launch flags.
 SAVED = ("provider", "model", "base_url", "setup_done", "warn_free_gb", "end_of_day",
-         "history_days", "fixes_paused", "never", "off", "ai_daily_limit")
+         "history_days", "fixes_paused", "never", "off", "ai_daily_limit", "autopilot", "autopilot_close_frozen", "autopilot_admin")
 
 # The kinds of problems the person can switch on or off, in the order the app shows them.
 PROBLEM_KINDS = [
@@ -109,4 +113,6 @@ class SettingsStore:
         return {"provider": s.provider, "model": s.model, "base_url": s.base_url, "setup_done": s.setup_done,
                 "warn_free_gb": s.warn_free_gb, "end_of_day": s.end_of_day.strftime("%H:%M"),
                 "history_days": s.history_days, "fixes_paused": s.fixes_paused, "never": list(s.never),
-                "off": list(s.off), "problem_kinds": PROBLEM_KINDS, "ai_daily_limit": s.ai_daily_limit, "demo": s.demo}
+                "off": list(s.off), "problem_kinds": PROBLEM_KINDS, "ai_daily_limit": s.ai_daily_limit, "demo": s.demo,
+                "autopilot": s.autopilot, "autopilot_close_frozen": s.autopilot_close_frozen,
+                "autopilot_admin": s.autopilot_admin}

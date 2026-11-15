@@ -87,7 +87,7 @@ class Network(Playbook):
                 title="Set the clock",
                 explain="I'll set the clock from the internet time server. Windows will ask for permission.",
                 build_steps=lambda p: [admin_step("time_sync", launcher)],
-                needs_admin=True,
+                needs_admin=True, auto="safe",
             )]
         opts = []
         if problem.evidence.get("manual_dns"):
@@ -102,7 +102,7 @@ class Network(Playbook):
             title="Refresh the connection",
             explain="I'll clear saved web addresses and ask the router for a fresh address.",
             build_steps=lambda p: [command_step("flush_dns"), command_step("renew_address")],
-            undo_possible=False, no_undo_text="Nothing to undo: this only refreshes.",
+            undo_possible=False, no_undo_text="Nothing to undo: this only refreshes.", auto="safe",
         ))
         opts.append(FixOption(
             title="Reset the network stack",

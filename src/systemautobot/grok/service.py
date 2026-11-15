@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
@@ -178,7 +179,11 @@ class AssistantService:
         self._record("diagnose", out)
         if out.error:
             card.ai_note = out.error.message
-            return
+            if not (session.proposal or session.manual_steps):
+                return
+            # A later request failed, but the AI had already written steps or picked a repair: keep them.
+            self._fill(card, self._card(p, session, replace(out, error=None, text="")))
+            return  # not cached: the next ask should get the full answer
         card.ai_note = ""
         filled = self._card(p, session, out)
         self._diag_cache[p.fingerprint] = (datetime.now(timezone.utc), filled)

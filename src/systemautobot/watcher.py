@@ -33,6 +33,7 @@ class Watcher:
         self.clock = clock
         self._hung_since: dict[int, datetime] = {}
         self._hung_reported: dict[int, dict] = {}
+        self._hung_lock = threading.Lock()  # the fast loop and the main poll both look for frozen programs
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._subscriber: EventSubscriber | None = None
@@ -90,20 +91,24 @@ class Watcher:
                 self._dialog_reported.discard(hwnd)
 
     def _poll_hung(self) -> None:
-        now = self.clock()
-        current = {w["pid"]: w for w in self.checks.hung_windows()}
-        for pid, w in current.items():
-            since = self._hung_since.setdefault(pid, now)
-            if pid not in self._hung_reported and now - since >= self.settings.hung_after:
-                self._hung_reported[pid] = w
-                self.emit(Signal("check", "hung_window",
-                                 dict(w, hung=True, hung_seconds=int((now - since).total_seconds()))))
-        for pid in list(self._hung_since):
-            if pid not in current:
-                del self._hung_since[pid]
-                w = self._hung_reported.pop(pid, None)
-                if w is not None:  # it recovered: tell triage so a waiting popup can close
-                    self.emit(Signal("check", "hung_window", dict(w, hung=False)))
+        signals = []
+        with self._hung_lock:
+            now = self.clock()
+            current = {w["pid"]: w for w in self.checks.hung_windows()}
+            for pid, w in current.items():
+                since = self._hung_since.setdefault(pid, now)
+                if pid not in self._hung_reported and now - since >= self.settings.hung_after:
+                    self._hung_reported[pid] = w
+                    signals.append(Signal("check", "hung_window",
+                                          dict(w, hung=True, hung_seconds=int((now - since).total_seconds()))))
+            for pid in list(self._hung_since):
+                if pid not in current:
+                    del self._hung_since[pid]
+                    w = self._hung_reported.pop(pid, None)
+                    if w is not None:  # it recovered: tell triage so a waiting popup can close
+                        signals.append(Signal("check", "hung_window", dict(w, hung=False)))
+        for signal in signals:  # outside the lock: handling a signal can take a while
+            self.emit(signal)
 
     def _safe(self, name: str, fn: Callable[[], None]) -> None:
         try:
@@ -136,6 +141,10 @@ class Watcher:
         while not self._stop.is_set():
             if "error_dialog" not in self.settings.off:  # switched off: don't even look
                 self._safe("error_dialogs", self.poll_dialogs)
+            # Frozen programs are checked here too: the main poll also runs slow network and
+            # security checks, and a frozen program in front shouldn't wait a minute behind them.
+            if "frozen_app" not in self.settings.off:
+                self._safe("hung_windows", self._poll_hung)
             self._stop.wait(self.settings.dialog_poll.total_seconds())
 
     @property

@@ -46,6 +46,7 @@ class FrozenApp(Playbook):
                 explain="I'll restart the taskbar and File Explorer. Your files and open programs aren't affected.",
                 build_steps=lambda p: [close_program_step(guard, p.evidence["pid"], name, allow_explorer=True),
                                        start_program_step(explorer, "Windows Explorer")],
+                auto="safe",
             )]
         return [FixOption(
             title=f"Close and reopen {_display(name)}",
@@ -53,6 +54,7 @@ class FrozenApp(Playbook):
             warnings=[f"Anything you haven't saved in {_display(name)} will be lost."],
             build_steps=lambda p: [close_program_step(guard, p.evidence["pid"], name),
                                    start_program_step(ev.get("exe", ""), _display(name))],
+            auto="unsaved",
         )]
 
     def manual_steps(self, problem: Problem) -> list[ManualStep]:

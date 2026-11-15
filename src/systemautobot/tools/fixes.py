@@ -9,6 +9,7 @@ whatever happens.
 from __future__ import annotations
 
 import ctypes
+import os
 import hmac
 import json
 import logging
@@ -16,6 +17,8 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +53,31 @@ COMMANDS: dict[str, list[str]] = {
     "flush_dns": ["ipconfig", "/flushdns"],
     "renew_address": ["ipconfig", "/renew"],
 }
+
+
+# Windows pages the app may open (for the person, from a step, or because the AI suggested it).
+SAFE_PAGES = {
+    "ms-settings:storagesense": "Storage settings", "ms-settings:network-status": "Network settings",
+    "ms-settings:network-wifi": "Wi-Fi settings", "ms-settings:windowsupdate": "Windows Update",
+    "ms-settings:appsfeatures": "Installed apps", "ms-settings:startupapps": "Startup apps",
+    "ms-settings:sound": "Sound settings", "ms-settings:printers": "Printers", "ms-settings:dateandtime": "Date and time",
+    "ms-settings:troubleshoot": "Troubleshooters", "ms-settings:backup": "Windows Backup",
+    "windowsdefender:": "Windows Security", "devmgmt.msc": "Device Manager",
+}
+
+
+def open_page_step(target: str, opener: Callable[[str], None] | None = None) -> FixStep:
+    """Open one of the listed Windows pages. Changes nothing by itself."""
+    name = SAFE_PAGES[target]  # KeyError for anything not on the list
+
+    def run() -> StepResult:
+        try:
+            (opener or os.startfile)(target)
+        except OSError as e:
+            return StepResult(StepStatus.COULDNT, f"Couldn't open {name}.", output=str(e))
+        return StepResult(StepStatus.DONE, f"Opened {name}.")
+
+    return FixStep(tool="open_page", args={"target": target, "name": name}, run=run)
 
 
 def command_step(name: str) -> FixStep:
@@ -189,12 +217,57 @@ def cancel_print_job_step(printer: str, job_id: int, document: str) -> FixStep:
 
 # ---- admin repairs through sab-helper ----------------------------------------------
 
+# Admin repairs Autopilot may run without the Windows prompt, once the person has set that up
+# (admin_setup.py). Kept short on purpose: quick, no restart, no deletion, nothing to undo.
+UNATTENDED = ("time_sync", "restart_print_spooler", "defender_signature_update", "firewall_enable", "check_disk")
+
+
 class AdminLauncher:
     """Starts sab-helper elevated for one allowlisted entry and reads its result."""
 
     def __init__(self, results_dir: Path | None = None, timeout: float = 3600):
         self.results_dir = results_dir or helper_results_dir()
         self.timeout = timeout
+        self._mode = threading.local()  # no-prompt mode is per thread: only Autopilot's own run
+
+    @contextmanager
+    def no_prompt(self):
+        """Inside this block, admin steps use the pre-installed scheduled tasks. They never show a
+        Windows prompt, and never fall back to one: nobody may be at the PC."""
+        self._mode.on = True
+        try:
+            yield
+        finally:
+            self._mode.on = False
+
+    def start_task(self, entry_id: str) -> bool:
+        schtasks = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "schtasks.exe")
+        try:
+            r = subprocess.run([schtasks, "/Run", "/TN", f"\\SystemAutoBot\\Repair {entry_id}"], capture_output=True,
+                               timeout=30, creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+            return r.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def run_task(self, entry_id: str, wait: float | None = None, poll: float = 1.0) -> StepResult:
+        """Autopilot's no-prompt path: start this repair's scheduled task and read its result."""
+        if entry_id not in UNATTENDED:
+            return StepResult(StepStatus.COULDNT, "This repair can't run without the Windows prompt.")
+        name = f"task-{entry_id}"
+        path = self.results_dir / f"{name}.json"
+        before = path.stat().st_mtime if path.exists() else 0.0
+        if not self.start_task(entry_id):
+            return StepResult(StepStatus.COULDNT, "No-prompt admin repairs aren't set up, so I didn't run it.")
+        deadline = time.monotonic() + (wait if wait is not None else self.timeout)
+        while time.monotonic() < deadline:
+            if path.exists() and path.stat().st_mtime > before:
+                time.sleep(min(poll, 0.3))  # let the task finish writing
+                try:
+                    return self.read_result(name, 0)
+                except (OSError, ValueError):
+                    pass  # still being written; look again
+            time.sleep(poll)
+        return StepResult(StepStatus.COULDNT, "The repair didn't finish in time.")
 
     def helper_command(self, entry_id: str, run_id: str) -> tuple[str, str]:
         if getattr(sys, "frozen", False):
@@ -204,6 +277,8 @@ class AdminLauncher:
         return sys.executable, f'-I "{script}" {entry_id} {run_id}'
 
     def run(self, entry_id: str) -> StepResult:
+        if getattr(self._mode, "on", False):
+            return self.run_task(entry_id)
         if sys.platform != "win32":
             return StepResult(StepStatus.COULDNT, "Admin repairs need Windows.")
         import pywintypes

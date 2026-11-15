@@ -33,7 +33,7 @@ class DiskSpace(Playbook):
                 title="Delete temporary files",
                 explain="I'll delete temporary files and app caches that Windows and your apps rebuild on their own.",
                 build_steps=lambda p: [delete_temp_step(self.tools.guard, roots)],
-                undo_possible=False,
+                undo_possible=False, auto="safe",
             ),
             FixOption(
                 title="Empty the Recycle Bin",

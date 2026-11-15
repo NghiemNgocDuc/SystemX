@@ -48,7 +48,7 @@ class PrintQueue(Playbook):
                 title="Restart the print service",
                 explain="I'll restart the Windows print service. Windows will ask for permission.",
                 build_steps=lambda p: [admin_step("restart_print_spooler", launcher)],
-                needs_admin=True,
+                needs_admin=True, auto="safe",
             ),
         ]
 

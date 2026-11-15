@@ -43,6 +43,7 @@ class AppContext:
     open_target: Callable[[str], None] = field(default=lambda t: os.startfile(t))  # noqa: E731
     version: str = ""
     opened: dict[str, list[str]] = field(default_factory=dict)
+    admin: Any = None                                  # admin_setup, or a stand-in for tests
 
     @property
     def token(self) -> str:
@@ -231,6 +232,31 @@ def create_app(ctx: AppContext) -> FastAPI:
         s = _session(sid)
         think.stop(s)
         return s.view()
+
+    # ---- no-prompt admin repairs for Autopilot: off by default, set up once by the person ----
+
+    def _admin():
+        from .. import admin_setup
+
+        return ctx.admin or admin_setup
+
+    @app.get("/api/autopilot_admin", dependencies=ui)
+    def autopilot_admin_status():
+        return _admin().status(ctx.store.settings.autopilot_admin)
+
+    @app.post("/api/autopilot_admin", dependencies=ui)
+    def autopilot_admin_set(body: dict):
+        """on: Windows asks once, then the tasks are installed. off: Windows asks once, and they're removed."""
+        if not isinstance(body.get("on"), bool):
+            raise HTTPException(400, "Use on or off.")
+        admin = _admin()
+        if body["on"]:
+            ok, message = (True, "Already set up.") if admin.installed() else admin.install()
+            ctx.store.update(autopilot_admin=bool(ok))
+        else:
+            ctx.store.update(autopilot_admin=False)  # off in the app first, whatever happens next
+            ok, message = admin.remove()
+        return {**admin.status(ctx.store.settings.autopilot_admin), "ok": bool(ok), "message": message}
 
     @app.get("/api/ai_usage", dependencies=ui)
     def ai_usage():
@@ -498,6 +524,11 @@ table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{border-bottom:
         if "fixes_paused" in body:
             changes["fixes_paused"] = bool(body["fixes_paused"])
             ctx.pipeline.runner.paused = changes["fixes_paused"]
+        for flag in ("autopilot", "autopilot_close_frozen"):
+            if flag in body:
+                if not isinstance(body[flag], bool):
+                    raise HTTPException(400, "Use on or off.")
+                changes[flag] = body[flag]
         if "ai_daily_limit" in body:
             v = body["ai_daily_limit"]
             if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 1000:

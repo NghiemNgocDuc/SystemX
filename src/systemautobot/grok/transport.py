@@ -9,6 +9,7 @@ Every transport raises AIUnavailable with a person-facing message when the AI ca
 from __future__ import annotations
 
 import json
+import math
 import re
 import threading
 from pathlib import Path
@@ -22,12 +23,14 @@ def offline_line(label: str = "Grok") -> str:
 
 
 class AIUnavailable(Exception):
-    def __init__(self, kind: str, message: str, detail: str = "", reason: str = ""):
+    def __init__(self, kind: str, message: str, detail: str = "", reason: str = "",
+                 retry_after: float | None = None):
         super().__init__(message)
         self.kind = kind          # no_key, bad_key, rate_limited, server, offline, bad_request, no_tools
         self.message = message
         self.detail = detail
         self.reason = reason      # the provider's own one-line explanation, secrets removed
+        self.retry_after = retry_after  # seconds the provider asked us to wait (rate limits), if it said
 
 
 GrokUnavailable = AIUnavailable  # older name
@@ -57,7 +60,59 @@ def _reason(e: Exception) -> str:
         msg = str((err.get("message") if isinstance(err, dict) else err) or body.get("message") or "")
     elif isinstance(body, str):
         msg = body
-    return trim(" ".join(msg.split()), 220)
+    msg = re.sub(r"\s+in organization `?org_\w+`?", "", msg)  # the account id adds nothing for the person
+    return trim(" ".join(msg.split()), 260)
+
+
+_TRY_AGAIN = re.compile(r"try again in\s+([0-9hms.]+)", re.I)
+_OUT_OF_QUOTA = re.compile(r"insufficient_quota|exceeded your current quota", re.I)
+
+
+def _retry_after(e: Exception, text: str) -> float | None:
+    """Seconds the provider asked us to wait: the Retry-After header, else its "try again in 1m26.4s"."""
+    headers = getattr(getattr(e, "response", None), "headers", None) or {}
+    try:
+        raw = headers.get("retry-after")
+        if raw is not None:
+            return max(0.0, float(raw))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    m = _TRY_AGAIN.search(text)
+    if not m:
+        return None
+    scale = {"h": 3600.0, "m": 60.0, "s": 1.0, "ms": 0.001}
+    parts = re.findall(r"([\d.]+)(ms|h|m|s)", m.group(1))
+    try:
+        return sum(float(n) * scale[u] for n, u in parts) if parts else None
+    except ValueError:
+        return None
+
+
+def _limit_words(text: str) -> str:
+    t = text.lower()
+    if "per day" in t or "(tpd)" in t or "(rpd)" in t:
+        return "today's limit"
+    if "tokens per minute" in t or "(tpm)" in t:
+        return "its per-minute token limit"
+    if "requests per minute" in t or "(rpm)" in t:
+        return "its per-minute request limit"
+    return "a rate limit"
+
+
+def _rate_limited(e: Exception, label: str) -> "AIUnavailable":
+    full = str(e)
+    if _OUT_OF_QUOTA.search(full):
+        return AIUnavailable("rate_limited", f"Your {label} account is out of quota. Check your plan and billing "
+                                             f"with {label}.", full, _reason(e))
+    wait = _retry_after(e, full)
+    if wait is None:
+        when = "Try again in a minute."
+    elif wait <= 90:
+        when = f"It clears in about {max(1, math.ceil(wait))} seconds."
+    else:
+        when = f"It clears in about {math.ceil(wait / 60)} minutes."
+    return AIUnavailable("rate_limited", f"Your {label} key hit {_limit_words(full)}. {when}", full, _reason(e),
+                         retry_after=wait)
 
 
 _KEY_WORDS = re.compile(r"api[ _-]?key|incorrect key|invalid key|unauthori[sz]ed", re.I)
@@ -89,7 +144,7 @@ def _map_errors(fn, label: str):
         raise AIUnavailable("bad_request", f"{label} doesn't know that model. Pick another in Settings.", str(e),
                             _reason(e))
     except openai.RateLimitError as e:
-        raise AIUnavailable("rate_limited", f"{label} is busy right now. I'll try again later.", str(e))
+        raise _rate_limited(e, label)
     except (openai.APIConnectionError, openai.APITimeoutError) as e:
         raise AIUnavailable("offline", offline_line(label), str(e))
     except openai.APIStatusError as e:

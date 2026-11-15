@@ -69,13 +69,15 @@ class Security(Playbook):
                               "I'll ask Windows Security to download the latest virus definitions. "
                               "Windows will ask for permission.",
                               build_steps=lambda p: [admin_step("defender_signature_update", launcher)],
-                              needs_admin=True, no_undo_text="Nothing to undo: this only updates definitions.")]
+                              needs_admin=True, no_undo_text="Nothing to undo: this only updates definitions.",
+                              auto="safe")]
         if issue == "firewall":
             return [FixOption("Turn the firewall back on",
                               "I'll turn the Windows firewall back on for every network type. "
                               "Windows will ask for permission.",
                               build_steps=lambda p: [admin_step("firewall_enable", launcher)],
-                              needs_admin=True, no_undo_text="You can turn it off again in Windows Security.")]
+                              needs_admin=True, no_undo_text="You can turn it off again in Windows Security.",
+                              auto="safe")]
         return []  # real-time protection: Tamper Protection rightly blocks apps from switching it on
 
     def manual_steps(self, problem: Problem) -> list[ManualStep]:

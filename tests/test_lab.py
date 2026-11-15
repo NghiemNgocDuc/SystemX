@@ -44,12 +44,15 @@ def test_young_healthy_print_job_is_fine(pipe):
     assert pipe.handle(Signal("check", "print_queue", {"jobs": jobs})) is Route.IGNORED
 
 
-def test_disk_failing_replay_is_major_with_no_fix(pipe):
+def test_disk_failing_replay_is_major_and_its_fix_needs_the_windows_prompt(pipe):
     xml = (LAB / "replay" / "S9_disk_failing.xml").read_text(encoding="utf-8")
     routes = [pipe.handle(s) for s in parse_events_xml(xml)]
     assert routes[0] is Route.POPUP
     card = pipe.open_cards["disk_failing:disk"]
-    assert card.option is None and "Back up" in card.manual_steps[0].text
+    assert "Back up" in card.manual_steps[0].text
+    fix = card.option  # opens Backup, then Windows' own drive check: needs the Windows prompt, never unattended
+    assert fix.title == "Check the drive and open Backup" and fix.needs_admin
+    assert [s.tool for s in fix.build_steps(card.problem)] == ["open_page", "admin:check_disk"]
 
 
 def test_failing_disk_suppresses_write_heavy_fixes(pipe, fake_checks):

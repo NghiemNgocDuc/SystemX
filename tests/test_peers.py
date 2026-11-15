@@ -125,7 +125,7 @@ def test_unhealthy_disk_is_major_and_separate_from_event_alarm(world):
     checks.disk_health = lambda: [{"name": "NVMe SSD", "media": "SSD", "health": "Warning", "status": "Degraded"}]
     watcher.poll_slow()
     card = pipe.open_cards["disk_failing:health"]
-    assert card.problem.severity.value == "major" and card.option is None and "Warning" in card.problem.title
+    assert card.problem.severity.value == "major" and card.option.needs_admin and "Warning" in card.problem.title
     pipe.handle(Signal("event", "System/disk/7", {"provider": "disk", "event_id": 7, "fields": {}}))
     checks.disk_health = lambda: [{"name": "NVMe SSD", "media": "SSD", "health": "Healthy", "status": "OK"}]
     watcher.poll_slow()

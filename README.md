@@ -138,7 +138,7 @@ These are the problems a lot of people hit and the repairs a helpdesk would actu
 | Virus definitions old | `Get-MpComputerStatus`: definitions more than 3 days old | Minor | Update the virus definitions (admin) | Windows Security, Check for updates |
 | Firewall off | `Get-NetFirewallProfile`: Private or Public off, and no other firewall registered with Windows | Major | Turn the firewall back on (admin) | Windows Security, Firewall & network protection |
 | Error message on screen | A standard error box (dialog text like "error", "failed", "0x8007…") on screen for two checks in a row | Minor, shown on Home at once | **Fix for me** opens think mode: the AI looks, step by step, and may propose one fix from the list | Restart the program, then update or reinstall it |
-| Disk failing | Disk events 7, 51, 153, Ntfs 55, or the drive's own health (`Get-PhysicalDisk`) not Healthy | Major | **None.** Nothing that writes to the disk is offered. | Back up now (opens backup settings), then replace the drive |
+| Disk failing | Disk events 7, 51, 153, Ntfs 55, or the drive's own health (`Get-PhysicalDisk`) not Healthy | Major | **Check the drive and open Backup**: opens Windows Backup, then Windows' online drive check (`chkdsk /scan`, not the full surface scan). It never claims the drive is cured. | Back up now (opens backup settings), then replace the drive |
 | Blue screen on last boot | Kernel-Power 41 with BugCheck 1001 | Major, shown after sign-in | None, unless the crash names no driver, then the system file repair | If a driver is named: Device Manager, roll back or update that driver |
 
 ## Checks the app and Grok can run on their own
@@ -172,7 +172,7 @@ This is the helpdesk work a person would otherwise click through. Each tool vali
 - Switch the sound output back to the device that was active before.
 - Run a Windows Security quick scan.
 - Open the exact Windows Settings page for a problem the toolbox cannot finish itself.
-- Elevated repairs from a fixed list only: System File Checker, DISM restore, Winsock reset, time sync, setting DNS back to automatic, restarting the print service, resetting the Windows Update components, updating the virus definitions, and turning the firewall back on (9 built; turning off an "all users" startup program is planned). Each one asks through the normal Windows permission prompt and records the command that actually ran. The command text is chosen by the app from that list. Grok chooses the list entry, not the command string.
+- Elevated repairs from a fixed list only: System File Checker, DISM restore, Winsock reset, time sync, setting DNS back to automatic, restarting the print service, resetting the Windows Update components, updating the virus definitions, turning the firewall back on, and Windows' online drive check (10 built; turning off an "all users" startup program is planned). Each one asks through the normal Windows permission prompt and records the command that actually ran. The command text is chosen by the app from that list. Grok chooses the list entry, not the command string.
 - Before an elevated repair, the app tries to create a restore point. Windows allows only one every 24 hours and many PCs have System Protection turned off, so the card says which case applies before the button: "I'll make a restore point first", "I'll use the restore point from 9:12 AM today", or "No restore point is possible because System Protection is off."
 
 Protected from every file tool even if Grok names them: `C:\Windows` (except through the elevated list above), both Program Files trees, `C:\ProgramData`, drive roots, the profile root, Documents, Desktop, Pictures, Videos, Downloads, mail, SSH keys, and cloud-synced files. Links are not followed. OneDrive is described, not deleted.
@@ -216,6 +216,19 @@ These are the cases where Grok, the app, or both cannot solve the problem, and w
 | Same-drive quarantine (from the first draft) | Moving temp files to a folder on the same drive frees zero bytes for 30 days | Regenerable temp files and caches are deleted, with "no undo" on the card. The app does not touch personal files, so it needs no quarantine. |
 | Fix needs a restart to take effect (Winsock, Windows Update reset) | It can't be verified yet | The record stays "Waiting for restart" and is verified after the next sign-in |
 | Many problems at once | A wall of popups | One card at a time, at most 3 major popups an hour, the rest grouped |
+
+## Notifications, the Allow box, and Autopilot
+
+- **A critical problem sends a Windows notification** that names the problem and the fix that's ready. The main window is the summary and the history; it doesn't jump in front of you.
+- **Clicking the notification opens a small box.** It says in one sentence what the fix is meant to do, shows any warning, and asks **Allow** or **Not now**. "Exactly what runs" lists each step and the real Windows command, one click away. After Allow, the box shows what changed and whether the re-check passed.
+- **Autopilot (off by default, in Settings) fixes critical problems with no click.** It is a harness around the app's repairs and the AI agent, in [autopilot.py](src/systemautobot/autopilot.py):
+  1. **Decide.** A built-in repair if the problem has one. Otherwise the AI agent looks with its read-only checks and may pick one repair from the fixed list.
+  2. **Guard.** The harness, never the agent, decides whether it may run unattended. Only repairs marked safe: no administrator rights, and nothing that can lose work. Closing a frozen program is a second switch, because unsaved work is lost. Nothing runs while fixes are paused, nothing is deleted on a disk that may be failing, each problem gets one automatic try a day, and there are at most 3 automatic fixes an hour.
+  3. **Act and verify.** Through the same runner as every other fix: the problem is re-checked first, every step is recorded, and the same check runs again afterwards.
+  4. **Report.** A notification says what was done, and Activity marks the record "Autopilot, no click".
+- **Admin repairs ask through the Windows prompt, unless you set up the no-prompt option.** It is off by default, in Settings → Autopilot. You switch it on from your own administrator account and Windows asks once. That installs one small script in `Program Files\SystemAutoBot\admin`, where only administrators can write, and one scheduled task per repair ([admin_setup.py](src/systemautobot/admin_setup.py)). It covers five quick repairs only: set the clock, update virus definitions, turn the firewall back on, restart the print service, and check the drive. Nothing with a restart, a restore point or a deletion is on the list, and the script takes no input except which of the five to run.
+  - **The trade-off:** once installed, any program running in your Windows account could start those five repairs without a prompt, and nothing else. Switching the option off removes the script and the tasks.
+- **What still comes to you:** every other admin repair, anything that could lose work, and anything Autopilot tried that didn't work. Each arrives as a notification, with the reason shown in the box.
 
 ## Fix for me and think mode
 

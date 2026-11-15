@@ -98,6 +98,12 @@ ALLOWLIST: dict[str, dict] = {
         "settings": [("firewall", "Domain, Private, Public", "off", "on")],
         "commands": [(ps("Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True"), {0}, 120)],
     },
+    "check_disk": {
+        # /scan is the online check: it reads the file system and repairs what it can without a
+        # restart. It is not the full surface scan (/r), which works a failing drive hard.
+        "summary": "Had Windows check the drive and repair the file errors it could.",
+        "commands": [(["chkdsk.exe", os.environ.get("SystemDrive", "C:"), "/scan"], {0, 1}, 3600)],
+    },
     "dns_automatic": {
         "summary": "Switched the DNS servers back to automatic.",
         "special": "dns_automatic",

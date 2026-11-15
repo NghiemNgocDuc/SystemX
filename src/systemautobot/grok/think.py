@@ -19,6 +19,7 @@ import json
 import logging
 import threading
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,9 +31,15 @@ from .transport import AIUnavailable
 
 log = logging.getLogger("systemautobot.think")
 KEEP_SESSIONS = 30
+AI_FIRST = ("unknown", "error_dialog")  # the app has nothing specific to say about these; the AI is the way in
 
-THINK_ASK = ("\n\nThe person is watching you work in think mode. Before each check, say in one short sentence "
-             "what you are about to look at and why. Then give your answer.")
+
+def own_steps(card: Card) -> list[str]:
+    """The card's built-in steps, minus the one that only says "press Fix for me" (we're already there)."""
+    return [m.text for m in card.manual_steps if not m.text.startswith("Press Fix for me")]
+
+THINK_ASK = ("\n\nThe person is watching you work. Before each check, say in under 12 words what you will look "
+             "at. Keep your final answer to two short sentences, and any steps to under 15 words each.")
 
 # What the AI is allowed to read, in plain words (shown before anything is sent).
 CHECKS_IT_MAY_RUN = [
@@ -57,6 +64,7 @@ ADMIN_WORDS = {
     "defender_signature_update": "Ask Windows Security to download the latest virus definitions",
     "firewall_enable": "Turn the Windows firewall on for every network type",
     "dns_automatic": "Set every network adapter's DNS servers back to automatic",
+    "check_disk": "Have Windows check the drive and repair file errors (online scan, no restart)",
 }
 COMMAND_WORDS = {
     "flush_dns": ("Clear the saved web addresses (DNS cache)", "ipconfig /flushdns"),
@@ -79,6 +87,7 @@ def describe_step(step: FixStep) -> dict[str, Any]:
     t, a = step.tool, step.args
     notes: list[str] = []
     commands: list[str] = []
+    detail: list[str] = []  # long specifics (folder paths), shown only when the person asks
     if t.startswith("admin:"):
         entry = t.split(":", 1)[1]
         text = ADMIN_WORDS.get(entry, entry.replace("_", " "))
@@ -90,8 +99,13 @@ def describe_step(step: FixStep) -> dict[str, Any]:
         text, cmd = COMMAND_WORDS[t]
         commands = [cmd]
     elif t == "delete_temp_files":
-        text = "Delete temporary files from these folders: " + "; ".join(a.get("folders", []))
+        folders = list(a.get("folders", []))
+        text = f"Delete temporary files from {len(folders)} folder{'' if len(folders) == 1 else 's'}"
+        detail = folders
         notes.append("Skips anything changed in the last hour or in use, and never follows links into other folders.")
+    elif t == "open_page":
+        text = f"Open {a.get('name', 'a Windows page')}"
+        notes.append("Opens the page for you. It changes nothing by itself.")
     elif t == "empty_recycle_bin":
         text = "Empty the Recycle Bin"
     elif t == "close_program":
@@ -102,7 +116,7 @@ def describe_step(step: FixStep) -> dict[str, Any]:
         text = f"Cancel print job #{a.get('job_id')} on {a.get('printer')}"
     else:
         text = t.replace("_", " ")
-    return {"text": text, "commands": commands, "notes": notes, "admin": step.needs_admin}
+    return {"text": text, "commands": commands, "notes": notes, "detail": detail, "admin": step.needs_admin}
 
 
 def describe_plan(option: FixOption, card: Card) -> dict[str, Any]:
@@ -190,23 +204,21 @@ class ThinkManager:
     def start(self, card: Card) -> Session:
         s = self._keep(Session(card))
         if card.option is not None:
-            s.add("intro", text="Here's exactly what I'll do. Nothing changes until you press Allow.")
             self._show_plan(s, card)
             return s
         status = self.service.status()
         if not status["configured"]:
             s.status = "manual"
-            s.add("no_ai", text="I don't have a built-in repair for this, and no AI is connected to look into it.")
-            if card.manual_steps:
-                s.add("manual", steps=[m.text for m in card.manual_steps])
+            s.add("no_ai", text="There's no built-in fix for this, and no AI is connected to look into it.")
+            if own_steps(card):
+                s.add("manual", steps=own_steps(card))
             return s
         label, model = status["label"], status["model"]
         p = card.problem
         prompt = problem_prompt(p.title, p.evidence, p.signal.text if p.signal else "") + THINK_ASK
         s.status = "consent"
-        s.add("intro", text=(f"I don't have a built-in repair for this, so I can ask {label} to look into it. "
-                             f"It can only read your PC, and it can't change anything. If it suggests a repair, "
-                             f"I'll show you exactly what would run and ask you first."))
+        if card.problem.playbook_id not in AI_FIRST and own_steps(card):
+            s.add("manual", steps=own_steps(card))  # a known problem: what to do comes first
         s.add("consent", provider=label, model=model, sent=prompt, rules=SYSTEM_PROMPT,
               checks=CHECKS_IT_MAY_RUN, limit=self.service.usage())
         return s
@@ -243,12 +255,18 @@ class ThinkManager:
             s.add("error", text=e.message)
             return
 
+        said: list[str] = []
+
         def observe(kind: str, data: dict) -> None:
-            if kind == "round":
+            if kind == "wait":
+                s.add("wait", seconds=round(data["seconds"]),
+                      text=f"{data['text']} Waiting {round(data['seconds'])} seconds, then I'll carry on.")
+            elif kind == "round":
                 s.add("round", n=data["n"], max=data["max"])
             elif kind == "reasoning":
                 s.add("reasoning", text=trim(data["text"], 2000))
             elif kind == "say":
+                said.append(data["text"])
                 s.add("say", text=trim(data["text"], 1000))
             elif kind == "tool":
                 ok = '"error"' not in data["result"][:20]
@@ -261,10 +279,15 @@ class ThinkManager:
         self.service._record("think", out)
         s.add("usage", provider=client.label, model=out.model, rounds=out.rounds, tokens=out.tokens,
               replay=out.replay)
+        if out.error is not None and out.error.kind != "stopped" and (session.proposal or session.manual_steps):
+            # A later request failed, but the AI had already written steps or picked a repair. Keep that.
+            s.add("cut_short", text=f"{self._why(out.error, client.label)} "
+                                    f"{client.label} had already finished the part below, so here it is.")
+            out = replace(out, error=None, text=said[-1] if said else "")
         if out.error is not None:
             if out.error.kind != "stopped":
                 s.status = "error"
-                s.add("error", text=out.error.message)
+                s.add("error", text=self._why(out.error, client.label))
             return
         if s.stop.is_set():
             return
@@ -276,7 +299,8 @@ class ThinkManager:
             filled.option, filled.proposed_by = None, "playbook"
         self.service._fill(card, filled)  # the card on Home now carries the same answer
         card.ai_note = ""
-        s.add("answer", text=out.text, provider=client.label)
+        if out.text:
+            s.add("answer", text=out.text, provider=client.label)
         if session.severity:
             self.pipeline.triage.raise_severity(p, session.severity)
         if card.option is not None:
@@ -291,6 +315,12 @@ class ThinkManager:
                   suggested=any(m.suggested for m in card.manual_steps))
         else:
             s.status = "answered"
+
+    @staticmethod
+    def _why(e: AIUnavailable, label: str) -> str:
+        """The app's sentence plus the provider's own words, so nothing about a failure is hidden."""
+        reason = getattr(e, "reason", "")
+        return f"{e.message} ({label} said: {reason})" if reason else e.message
 
     def _disk_failing(self, problem) -> bool:
         return problem.playbook_id != "disk_failing" and any(

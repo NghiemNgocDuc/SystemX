@@ -330,3 +330,88 @@ def test_ai_failure_is_a_note_so_the_explain_button_stays(service_world):
     svc.diagnose(card, force=True)
     d = card.to_dict()
     assert d["explanation"] == "" and d["ai_note"]  # the page shows the note; Fix for me can try again
+
+
+# ---- rate limits: say which limit, wait as long as the provider asks, never guess ----
+
+GROQ_429 = ("Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01abcdefgh` service tier "
+            "`on_demand` on tokens per minute (TPM): Limit 8000, Used 7392, Requested 2534. "
+            "Please try again in 14.445s. Need more tokens? Upgrade at https://console.groq.com/settings/billing")
+
+
+def _rate_limit_error(message, headers=None):
+    import httpx
+    import openai
+
+    resp = httpx.Response(429, headers=headers or {}, request=httpx.Request("POST", "https://example.invalid"))
+    return openai.RateLimitError(message, response=resp, body={"error": {"message": message}})
+
+
+def _mapped(exc, label="Groq"):
+    from systemautobot.grok.transport import AIUnavailable, _map_errors
+
+    def boom():
+        raise exc
+    with pytest.raises(AIUnavailable) as e:
+        _map_errors(boom, label)
+    return e.value
+
+
+def test_a_rate_limit_says_which_limit_and_how_long():
+    e = _mapped(_rate_limit_error(GROQ_429, {"retry-after": "15"}))
+    assert e.kind == "rate_limited" and e.retry_after == 15.0
+    assert e.message == "Your Groq key hit its per-minute token limit. It clears in about 15 seconds."
+    assert "Limit 8000, Used 7392" in e.reason and "org_01" not in e.reason
+    # no header: the wait comes from the provider's own sentence
+    assert _mapped(_rate_limit_error(GROQ_429)).retry_after == pytest.approx(14.445)
+    day = _mapped(_rate_limit_error("Rate limit reached on tokens per day (TPD): Limit 200000. "
+                                    "Please try again in 1h2m3.5s."))
+    assert day.retry_after == pytest.approx(3723.5) and "today's limit" in day.message and "63 minutes" in day.message
+    quota = _mapped(_rate_limit_error("You exceeded your current quota, please check your plan and billing details."),
+                    "OpenAI")
+    assert quota.retry_after is None and "out of quota" in quota.message
+
+
+class _Limited:
+    """Fails with a rate limit, then answers."""
+
+    replay = False
+
+    def __init__(self, errors):
+        self.errors, self.requests = list(errors), 0
+
+    def create(self, **request):
+        self.requests += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return {"output": [say("ok")], "usage": {"total_tokens": 1}}
+
+
+def test_the_client_waits_as_long_as_the_provider_asks(tools):
+    from systemautobot.grok.transport import AIUnavailable
+
+    slept, seen = [], []
+    t = _Limited([AIUnavailable("rate_limited", "Your Groq key hit its per-minute token limit.", retry_after=14.0)])
+    out = AssistantClient(t, "m", sleep=slept.append).run(ToolSession(tools), "hi",
+                                                          observer=lambda k, d: seen.append((k, d)))
+    assert out.error is None and t.requests == 2
+    assert sum(slept) == pytest.approx(15.0) and max(slept) <= 0.5  # short slices, so Stop works meanwhile
+    assert ("wait", {"seconds": 15.0, "text": "Your Groq key hit its per-minute token limit."}) in seen
+
+
+def test_a_long_limit_goes_back_to_the_person_instead_of_waiting(tools):
+    from systemautobot.grok.transport import AIUnavailable
+
+    slept = []
+    t = _Limited([AIUnavailable("rate_limited", "Today's limit.", retry_after=3600.0)])
+    out = AssistantClient(t, "m", sleep=slept.append).run(ToolSession(tools), "hi")
+    assert out.error.kind == "rate_limited" and t.requests == 1 and slept == []
+
+
+def test_stop_works_during_the_wait(tools):
+    from systemautobot.grok.transport import AIUnavailable
+
+    slept = []
+    t = _Limited([AIUnavailable("rate_limited", "Limit.", retry_after=30.0)])
+    out = AssistantClient(t, "m", sleep=slept.append).run(ToolSession(tools), "hi", stop=lambda: len(slept) >= 3)
+    assert out.error.kind == "stopped" and t.requests == 1 and len(slept) == 3

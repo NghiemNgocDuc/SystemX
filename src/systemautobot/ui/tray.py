@@ -1,4 +1,4 @@
-"""Tray icon, its menu, and the Ctrl+Alt+Space shortcut."""
+"""Tray icon, its menu, Windows notifications, and the Ctrl+Alt+Space shortcut."""
 
 from __future__ import annotations
 
@@ -6,11 +6,14 @@ import ctypes
 import logging
 import sys
 import threading
+import time
 from typing import Callable
 
 log = logging.getLogger("systemautobot.tray")
 
-COLORS = {"fine": (22, 121, 74), "needs": (214, 140, 0), "paused": (110, 118, 129)}
+COLORS = {"fine": (46, 139, 87), "needs": (201, 138, 27), "paused": (120, 120, 130)}
+NIN_BALLOONUSERCLICK = 0x0405  # WM_USER + 5: the person clicked the notification
+TITLE_MAX, BODY_MAX = 60, 240  # Windows cuts notification text beyond about 63 and 255 characters
 
 
 def icon_image(state: str):
@@ -18,7 +21,7 @@ def icon_image(state: str):
 
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((4, 4, 60, 60), radius=14, fill=(15, 108, 189))
+    d.rounded_rectangle((4, 4, 60, 60), radius=14, fill=(47, 93, 158))
     d.rectangle((18, 22, 46, 26), fill="white")    # a simple "S" mark made of bars
     d.rectangle((18, 22, 22, 33), fill="white")
     d.rectangle((18, 30, 46, 34), fill="white")
@@ -29,16 +32,25 @@ def icon_image(state: str):
     return img
 
 
+def _short(text: str, limit: int) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 class Tray:
     def __init__(self, *, open_main: Callable[[], None], check_now: Callable[[], None],
                  is_paused: Callable[[], bool], set_paused: Callable[[bool], None],
-                 digest_now: Callable[[], None] | None, quit_app: Callable[[], None]):
+                 digest_now: Callable[[], None] | None, quit_app: Callable[[], None],
+                 show_waiting: Callable[[], None] | None = None):
         import pystray
 
         self._paused = is_paused
         self._set_paused = set_paused
-        items = [
-            pystray.MenuItem("Open SystemAutoBot", lambda: open_main(), default=True),
+        self._on_notification_click = show_waiting or open_main
+        items = [pystray.MenuItem("Open SystemAutoBot", lambda: open_main(), default=True)]
+        if show_waiting:
+            items.append(pystray.MenuItem("Show what needs me", lambda: show_waiting()))
+        items += [
             pystray.MenuItem("Check this computer", lambda: check_now()),
             pystray.MenuItem("Pause fixes", lambda: self._toggle(), checked=lambda item: self._paused()),
         ]
@@ -46,6 +58,49 @@ class Tray:
             items.append(pystray.MenuItem("End of day now (demo)", lambda: digest_now()))
         items += [pystray.Menu.SEPARATOR, pystray.MenuItem("Quit", lambda: quit_app())]
         self.icon = pystray.Icon("SystemAutoBot", icon_image("fine"), "SystemAutoBot: Fine", pystray.Menu(*items))
+        self._hook_notification_click()
+
+    def _hook_notification_click(self) -> None:
+        """pystray shows notifications but doesn't report a click on one. Windows sends that click to
+        the tray icon's own message handler, so wrap the handler and pass everything else through."""
+        if sys.platform != "win32":
+            return
+        try:
+            from pystray._util import win32
+
+            handlers = self.icon._message_handlers
+            original = handlers[win32.WM_NOTIFY]
+
+            def on_notify(wparam, lparam):
+                if lparam & 0xFFFF == NIN_BALLOONUSERCLICK:
+                    threading.Thread(target=self._clicked, name="notification-click", daemon=True).start()
+                    return 0
+                return original(wparam, lparam)
+
+            handlers[win32.WM_NOTIFY] = on_notify
+        except Exception:  # a pystray update changed its internals: the tray menu still opens what's waiting
+            log.exception("could not listen for notification clicks")
+
+    def _clicked(self) -> None:
+        try:
+            self._on_notification_click()
+        except Exception:
+            log.exception("notification click")
+
+    def notify(self, title: str, message: str) -> bool:
+        """Show a Windows notification from the tray icon. False if it couldn't be shown."""
+        try:
+            for _ in range(30):  # at startup the icon needs a moment before it can show anything
+                if getattr(self.icon, "visible", False):
+                    break
+                time.sleep(0.1)
+            else:
+                return False  # no tray icon: the caller opens the box directly instead
+            self.icon.notify(_short(message, BODY_MAX), _short(title, TITLE_MAX))
+            return True
+        except Exception:
+            log.exception("could not show a notification")
+            return False
 
     def _toggle(self):
         self._set_paused(not self._paused())
