@@ -45,6 +45,14 @@ class Playbook:
     def manual_steps(self, problem: Problem) -> list[ManualStep]:
         return []
 
+    def can_recheck(self, problem: Problem) -> bool:
+        """Whether Check again can tell, by looking, that the person's own steps worked."""
+        return True
+
+    def recheck(self, problem: Problem) -> Problem | None:
+        """Look again after the person's own steps. Same as refresh() unless a playbook knows better."""
+        return self.refresh(problem)
+
     def verify(self, problem: Problem, fresh: Problem | None, results: list[StepResult]) -> tuple[Verification, str] | None:
         """Override for special cases. None means use the generic severity comparison."""
         return None

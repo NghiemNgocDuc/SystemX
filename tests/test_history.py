@@ -88,3 +88,4 @@ def test_unregistered_xai_key_pattern_is_redacted():
     from systemautobot.safety.redact import redact
 
     assert "xai-" not in redact("token xai-abcdefghijklmnopqrstuvwxyz0123")
+    assert "gsk_" not in redact("Authorization: Bearer gsk_" + "A1b2C3d4" * 6)

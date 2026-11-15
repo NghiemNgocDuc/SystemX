@@ -1,6 +1,23 @@
 # SystemAutoBot: Grok on the PC, doing the computer care
 
-This repository holds the plan for SystemAutoBot. The app is not built yet. The build order is in [PLAN.md](PLAN.md), and how we test and demo it is in [DEMO.md](DEMO.md).
+This repository holds SystemAutoBot and its plan. The build order is in [PLAN.md](PLAN.md), and how we test and demo it is in [DEMO.md](DEMO.md). The project website is [site/landing.html](site/landing.html), published to GitHub Pages by [.github/workflows/pages.yml](.github/workflows/pages.yml).
+
+## Try it
+
+**Download:** get `SystemAutoBot-windows.zip` from [Releases](https://github.com/NghiemNgocDuc/SystemX/releases), unzip it, and double-click `Install.cmd`. No admin rights are needed. On first launch, pick an AI provider (xAI Grok by default, or OpenAI, Anthropic Claude, Google Gemini, Groq, OpenRouter, or any OpenAI-compatible service), paste your key, load your models, and press **Test and save**. The key goes into Windows Credential Manager.
+
+**From source** (Python 3.11 or newer):
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[grok,ui,dev]"
+.venv\Scripts\python.exe -m pytest                         # the whole suite, no network, no PC changes
+.venv\Scripts\python.exe -m systemautobot app --demo       # the desktop app, checks every 10 s
+.venv\Scripts\python.exe -m systemautobot check            # every read-only check once
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # dist\SystemAutoBot-windows.zip
+```
+
+**Release:** push a tag such as `v0.1.0`. [.github/workflows/release.yml](.github/workflows/release.yml) tests, builds the zip on Windows, and attaches it to a GitHub Release, which is where the website's Download button points.
 
 SystemAutoBot lives in the Windows tray and talks like [Claw](https://www.genspark.ai/helpcenter/genspark-claw): the person describes a problem, or the helper speaks first. The brain is [Grok](https://docs.x.ai/developers/tools/function-calling) through the person's own xAI API key. The hands are local tools that cover the work a person actually does by hand to check and fix a Windows PC.
 
@@ -117,8 +134,11 @@ These are the problems a lot of people hit and the repairs a helpdesk would actu
 | No sound | Default output changed or the device disappeared | Minor | Switch back to the device that was active before | Sound settings, check the cable or Bluetooth |
 | System files damaged | Repeated crashes in Windows parts, servicing errors | Minor | DISM restore, then System File Checker (elevated) | None needed |
 | Out of memory | Resource-Exhaustion-Detector event 2004 | Major | Close the program using the most memory, with the unsaved-work warning | Restart the PC, turn off startup programs |
-| Threat found or protection off | Defender events 1116, 1118, 1119 not followed by 1117, or event 5001 | Major | Run a quick scan through Windows Security | Open Windows Security, turn protection on, run an offline scan |
-| Disk failing | Disk events 7, 51, 153, Ntfs 55, or a health warning | Major | **None.** Nothing that writes to the disk is offered. | Back up now (opens backup settings), then replace the drive |
+| Protection off | `Get-MpComputerStatus`: real-time protection off while Windows Security is the active antivirus | Major | None: Tamper Protection rightly blocks apps from switching it on | Open Windows Security and turn real-time protection on |
+| Virus definitions old | `Get-MpComputerStatus`: definitions more than 3 days old | Minor | Update the virus definitions (admin) | Windows Security, Check for updates |
+| Firewall off | `Get-NetFirewallProfile`: Private or Public off, and no other firewall registered with Windows | Major | Turn the firewall back on (admin) | Windows Security, Firewall & network protection |
+| Error message on screen | A standard error box (dialog text like "error", "failed", "0x8007…") on screen for two checks in a row | Minor, shown on Home at once | **Fix for me** opens think mode: the AI looks, step by step, and may propose one fix from the list | Restart the program, then update or reinstall it |
+| Disk failing | Disk events 7, 51, 153, Ntfs 55, or the drive's own health (`Get-PhysicalDisk`) not Healthy | Major | **None.** Nothing that writes to the disk is offered. | Back up now (opens backup settings), then replace the drive |
 | Blue screen on last boot | Kernel-Power 41 with BugCheck 1001 | Major, shown after sign-in | None, unless the crash names no driver, then the system file repair | If a driver is named: Device Manager, roll back or update that driver |
 
 ## Checks the app and Grok can run on their own
@@ -152,7 +172,7 @@ This is the helpdesk work a person would otherwise click through. Each tool vali
 - Switch the sound output back to the device that was active before.
 - Run a Windows Security quick scan.
 - Open the exact Windows Settings page for a problem the toolbox cannot finish itself.
-- Elevated repairs from a fixed list of 8 only: System File Checker, DISM restore, Winsock reset, time sync, setting DNS back to automatic, turning off an "all users" startup program, restarting the print service, and resetting the Windows Update components. Each one asks through the normal Windows permission prompt and records the command that actually ran. The command text is chosen by the app from that list. Grok chooses the list entry, not the command string.
+- Elevated repairs from a fixed list only: System File Checker, DISM restore, Winsock reset, time sync, setting DNS back to automatic, restarting the print service, resetting the Windows Update components, updating the virus definitions, and turning the firewall back on (9 built; turning off an "all users" startup program is planned). Each one asks through the normal Windows permission prompt and records the command that actually ran. The command text is chosen by the app from that list. Grok chooses the list entry, not the command string.
 - Before an elevated repair, the app tries to create a restore point. Windows allows only one every 24 hours and many PCs have System Protection turned off, so the card says which case applies before the button: "I'll make a restore point first", "I'll use the restore point from 9:12 AM today", or "No restore point is possible because System Protection is off."
 
 Protected from every file tool even if Grok names them: `C:\Windows` (except through the elevated list above), both Program Files trees, `C:\ProgramData`, drive roots, the profile root, Documents, Desktop, Pictures, Videos, Downloads, mail, SSH keys, and cloud-synced files. Links are not followed. OneDrive is described, not deleted.
@@ -196,6 +216,15 @@ These are the cases where Grok, the app, or both cannot solve the problem, and w
 | Same-drive quarantine (from the first draft) | Moving temp files to a folder on the same drive frees zero bytes for 30 days | Regenerable temp files and caches are deleted, with "no undo" on the card. The app does not touch personal files, so it needs no quarantine. |
 | Fix needs a restart to take effect (Winsock, Windows Update reset) | It can't be verified yet | The record stays "Waiting for restart" and is verified after the next sign-in |
 | Many problems at once | A wall of popups | One card at a time, at most 3 major popups an hour, the rest grouped |
+
+## Fix for me and think mode
+
+Every problem card has a **Fix for me** button. It opens think mode inside the card, so you see every step before anything changes:
+
+- **Built-in repair:** the exact plan. Each step is listed in plain words with the real Windows command (for example `ipconfig /flushdns` or `sfc.exe /scannow`), which folders it may touch, whether it needs administrator rights, and whether it can be undone. Nothing runs until you press **Allow**.
+- **No built-in repair:** the AI can look into it, but first you see exactly what would be sent, the rules the AI must follow, and the read-only checks it may run. Nothing is sent until you press **Send**. Then every step appears as it happens: what the AI says, its reasoning when the provider shares it, each check it runs and what that check saw, the tokens used, and its answer.
+- **If the AI suggests a repair**, it can only pick one from the app's fixed list. The app builds the steps itself and shows the same exact plan, and nothing runs until you press **Allow**. **Stop** works at any time.
+- **After Allow,** the card shows what ran, what changed, and the re-check, and the full record goes to Activity.
 
 ## Fix history
 
@@ -297,13 +326,35 @@ flowchart LR
 
 **Pause.** The tray menu has **Pause fixes**. While paused, it keeps checking but offers no fixes. Settings has the same switch.
 
-**Demo mode.** `--demo` shortens the 5-minute checks to 10 seconds, adds an **End of day now** button, and registers the test apps' cache folders. It is shown as a banner and is never on in a normal install. See [DEMO.md](DEMO.md).
+**Demo mode.** `--demo` shortens the 5-minute checks to 10 seconds and a stuck print job to 30 seconds, opens the window at start, and adds **End of day now** to Settings and the tray menu. It is never on in a normal install. See [DEMO.md](DEMO.md).
+
+## Compared with similar projects
+
+We checked the closest open-source projects (November 2026) and took the good ideas that fit this plan.
+
+| Project | What it is | What we took | Where we differ |
+| --- | --- | --- | --- |
+| [Eir](https://github.com/Swatto86/eir) | Rust Windows service + tray app that repairs the PC with AI CLIs | Watching for error boxes on screen, Windows Security and firewall checks, AI usage tracking, asking the AI only when the problem is new, a waiting queue that survives restarts | Eir's docs say it has no general undo, no restore points, and no spending cap. We have restore-point handling, a daily AI limit, an append-only fix history, an end-of-day list for small problems, guided fix-it-yourself steps, and a red-team suite. |
+| [TroubleScout](https://github.com/sasler/TroubleScout) | Terminal assistant on the GitHub Copilot SDK, running PowerShell | A shareable HTML health report | It can run any PowerShell after approval. Our AI picks only from a fixed list of repairs and never sees a shell. |
+| [pc-agent](https://github.com/usausa/pc-agent) | .NET terminal agent with hardware, S.M.A.R.T., and Wi-Fi collectors | Disk health from the drive's own report, and a self-check of what works on this PC | It runs in a terminal. Ours watches from the tray and speaks up on its own. |
+
+The new pieces:
+
+- **Error messages on screen:** a 3-second check for standard error boxes. A box must stay for two checks before it counts. The card shows on Home with **Fix for me**, which opens think mode. The box's text reaches the AI only as untrusted data, never a title or a button.
+- **Windows Security and firewall:** real-time protection, virus definition age, and firewall per network type. It stays quiet when another antivirus or firewall is in charge.
+- **Disk health:** `Get-PhysicalDisk` health, which a standard user can read. It has its own fingerprint, so a healthy report never clears an alarm raised by disk errors.
+- **AI use:** every request is recorded (provider, model, purpose, tokens). Settings shows today's and this week's totals, with a daily limit (default 50). The same problem isn't sent to the AI twice within 24 hours.
+- **Waiting problems survive a restart:** they're saved in `waiting.json` and re-checked at startup. Problems fixed while the app was closed are dropped, and urgent ones are never quietly downgraded.
+- **Self-check** in Settings, and a **Health report** in Activity: a single HTML page with no keys, passwords, or file contents.
 
 ## Build
 
-Python 3.12, pytest, `pywin32` for the event log and Windows APIs, `psutil`, `keyring` for Credential Manager, `pywebview`, `pystray`, and PyInstaller. A Startup shortcut and a mutex keep a single tray process.
+Python 3.11+, pytest, `pywin32` for the event log and Windows APIs, `psutil`, `keyring` for Credential Manager, the `openai` SDK as the client for every provider, FastAPI and uvicorn for the local server, `pywebview`, `pystray`, and PyInstaller. A Startup shortcut and a mutex keep a single tray process.
 
-- [src/systemautobot/grok/client.py](src/systemautobot/grok/client.py) calls `/v1/responses`, loops tool results, labels untrusted text, and drops the key from every log
+The AI is not limited to Grok. [grok/providers.py](src/systemautobot/grok/providers.py) lists the choices. xAI and OpenAI use the Responses API (`store: false`). Claude, Gemini, Groq (`gsk_` keys), OpenRouter, and custom services use Chat Completions, which [grok/transport.py](src/systemautobot/grok/transport.py) translates, so one tool loop serves all of them. Model lists come live from the provider with the person's key; nothing but the first suggestion is hard-coded.
+
+- [src/systemautobot/app.py](src/systemautobot/app.py) starts everything: single instance, never admin, local server, watcher, tray, windows
+- [src/systemautobot/grok/client.py](src/systemautobot/grok/client.py) is the bounded tool loop (8 rounds, one retry, untrusted-text wrapping); [grok/tools.py](src/systemautobot/grok/tools.py) is what the AI may call; [grok/service.py](src/systemautobot/grok/service.py) connects it to chat, diagnosis, and setup
 - [src/systemautobot/watcher.py](src/systemautobot/watcher.py) subscribes to the event log (`EvtSubscribe`), runs the 5-minute checks, and fingerprints signals
 - [src/systemautobot/triage.py](src/systemautobot/triage.py) is the one severity rule table, plus dedupe, rate limits, and the fullscreen and locked waits
 - [src/systemautobot/playbooks/](src/systemautobot/playbooks/) is one file per common problem: detect, severity, fix steps, manual steps, verify
@@ -312,8 +363,9 @@ Python 3.12, pytest, `pywin32` for the event log and Windows APIs, `psutil`, `ke
 - [src/systemautobot/tools/fixes.py](src/systemautobot/tools/fixes.py) is the repair toolbox, the elevated allowlist, and the runner that refuses to start without a history record
 - [src/systemautobot/safety/guard.py](src/systemautobot/safety/guard.py) is the only file delete path, the protected-path list, and the process-close guard
 - [src/systemautobot/history.py](src/systemautobot/history.py) stores fix records, steps, files and settings touched, undo, remembered choices, and traceback pointers
-- [src/systemautobot/web/](src/systemautobot/web/) is first run, chat, cards, the end-of-day list, history, and settings
-- [src/systemautobot/tray.py](src/systemautobot/tray.py) is the popover, the major-problem popup, the Needs you icon, Pause fixes, and close-to-tray
+- [src/systemautobot/web/](src/systemautobot/web/) is the local server and pages: first run (provider, key, model), chat, cards, the end-of-day list, history, and settings
+- [src/systemautobot/ui/](src/systemautobot/ui/) is the windows and popups, the tray icon and menu, Ctrl+Alt+Space, and the single-instance and never-admin checks
+- [packaging/](packaging/) builds the app folder, the helper, and the zip with its install and uninstall scripts
 - [src/sab_helper/](src/sab_helper/) is the admin helper: its own allowlist, argument check, and result file. It imports nothing from the Grok client.
 - [tests/](tests/) use a fake Grok client and recorded Windows events, so the unit suite never calls xAI or changes the test machine
 - [lab/](lab/) holds the breaker scripts, test apps, and scenario runner used in the VM. See [DEMO.md](DEMO.md).

@@ -175,6 +175,11 @@ def cmd_history(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["app"]:  # the desktop app: python -m systemautobot app [--demo] [--browser] ...
+        from .app import run
+
+        return run(argv[1:])
     ap = argparse.ArgumentParser(prog="systemautobot")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check").set_defaults(fn=cmd_check)

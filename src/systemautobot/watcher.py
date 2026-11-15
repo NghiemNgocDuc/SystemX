@@ -36,14 +36,58 @@ class Watcher:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._subscriber: EventSubscriber | None = None
+        self._slow_last: datetime | None = None
+        self._dialog_seen: dict[int, int] = {}       # hwnd -> consecutive polls seen
+        self._dialog_reported: set[int] = set()
+        self.health: dict[str, str] = {}             # check name -> "ok" or the error type, for the self-check
 
     # ---- polling ----------------------------------------------------------
 
-    def poll_once(self) -> None:
+    def poll_once(self, force_slow: bool = False) -> None:
         for drive in self.drives:
             self._safe("disk_space", lambda: self.emit(Signal("check", "disk_space", self.checks.disk_space(drive))))
         self._safe("network", lambda: self.emit(Signal("check", "network", self.checks.network_probe())))
         self._safe("hung_windows", self._poll_hung)
+        if hasattr(self.checks, "print_jobs"):
+            self._safe("print_queue", lambda: self.emit(
+                Signal("check", "print_queue", {"jobs": self.checks.print_jobs()})))
+        now = self.clock()
+        if force_slow or self._slow_last is None or now - self._slow_last >= self.settings.slow_check_interval:
+            self._slow_last = now
+            self.poll_slow()
+
+    def poll_slow(self) -> None:
+        """PowerShell-based checks (a second or two each), run on their own slower schedule."""
+        if hasattr(self.checks, "security_status"):
+            self._safe("security", self._poll_security)
+        if hasattr(self.checks, "disk_health"):
+            self._safe("disk_health", lambda: self.emit(
+                Signal("check", "disk_health", {"disks": self.checks.disk_health()})))
+
+    def _poll_security(self) -> None:
+        from .playbooks.security import Security, assess
+
+        data = self.checks.security_status()
+        if data is None:
+            raise RuntimeError("Windows Security status unavailable")
+        issues = assess(data)
+        for issue in Security.ISSUES:  # one signal per issue, so each can clear on its own
+            self.emit(Signal("check", f"security_{issue}", issues.get(issue)))
+
+    def poll_dialogs(self) -> None:
+        """Error boxes on screen. Reported once a box has stayed for two polls (about 6 s)."""
+        current = {d["hwnd"]: d for d in self.checks.error_dialogs()}
+        for hwnd, d in current.items():
+            self._dialog_seen[hwnd] = self._dialog_seen.get(hwnd, 0) + 1
+            if self._dialog_seen[hwnd] >= 2 and hwnd not in self._dialog_reported:
+                self._dialog_reported.add(hwnd)
+                text = d.get("text", "")
+                data = {k: v for k, v in d.items() if k != "text"}  # the box's text is untrusted: signal.text only
+                self.emit(Signal("check", "error_dialog", data, text=text))
+        for hwnd in list(self._dialog_seen):
+            if hwnd not in current:
+                self._dialog_seen.pop(hwnd, None)
+                self._dialog_reported.discard(hwnd)
 
     def _poll_hung(self) -> None:
         now = self.clock()
@@ -64,7 +108,9 @@ class Watcher:
     def _safe(self, name: str, fn: Callable[[], None]) -> None:
         try:
             fn()
-        except Exception:
+            self.health[name] = "ok"
+        except Exception as e:
+            self.health[name] = type(e).__name__
             log.exception("check %s failed", name)
 
     # ---- lifecycle --------------------------------------------------------
@@ -78,11 +124,23 @@ class Watcher:
                 log.exception("event log subscription failed; polling only")
         self._thread = threading.Thread(target=self._loop, name="watcher", daemon=True)
         self._thread.start()
+        if hasattr(self.checks, "error_dialogs"):
+            threading.Thread(target=self._dialog_loop, name="dialogs", daemon=True).start()
 
     def _loop(self) -> None:
         while not self._stop.is_set():
             self.poll_once()
             self._stop.wait(self.settings.poll_interval.total_seconds())
+
+    def _dialog_loop(self) -> None:
+        while not self._stop.is_set():
+            if "error_dialog" not in self.settings.off:  # switched off: don't even look
+                self._safe("error_dialogs", self.poll_dialogs)
+            self._stop.wait(self.settings.dialog_poll.total_seconds())
+
+    @property
+    def subscribed(self) -> int:
+        return len(self._subscriber._handles) if self._subscriber else 0
 
     def stop(self) -> None:
         self._stop.set()

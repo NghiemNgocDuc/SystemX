@@ -57,6 +57,7 @@ class Verification(str, enum.Enum):
     FIXED = "fixed"
     NOT_FIXED = "not_fixed"
     WAITING_RESTART = "waiting_restart"
+    CANT_CHECK = "cant_check"      # unfamiliar error with no check to re-run
 
 
 class FixedBy(str, enum.Enum):
@@ -156,6 +157,7 @@ class FixOption:
 class ManualStep:
     text: str
     open_target: str | None = None   # ms-settings: link, or devmgmt.msc
+    suggested: bool = False          # written by Grok: "Grok's suggestion. I haven't checked these."
 
 
 @dataclass
@@ -167,6 +169,36 @@ class Card:
     ttl: timedelta = timedelta(minutes=15)
     id: str = field(default_factory=new_id)
     used: bool = False
+    proposed_by: str = "playbook"    # playbook or grok
+    explanation: str = ""            # the AI's short answer, shown on the card
+    ai_note: str = ""                # why the AI couldn't answer (no key, offline, limit); the button stays
+    grok: dict[str, Any] | None = None  # model, rounds, tokens, reason, replay
+    result: dict[str, Any] | None = None  # filled after the person answers
+
+    def to_dict(self) -> dict[str, Any]:
+        p, o = self.problem, self.option
+        return {
+            "id": self.id,
+            "kind": p.playbook_id,
+            "fingerprint": p.fingerprint,
+            "title": p.title,
+            "severity": p.severity.value if p.severity else None,
+            "source": p.source,
+            "recurring": p.recurring,
+            "proposed_by": self.proposed_by,
+            "explanation": self.explanation,
+            "ai_note": self.ai_note,
+            "fix": None if o is None else {
+                "title": o.title, "explain": o.explain, "warnings": o.warnings,
+                "undo_possible": o.undo_possible, "no_undo_text": o.no_undo_text, "needs_admin": o.needs_admin,
+            },
+            "manual_steps": [{"text": s.text, "open": s.open_target, "suggested": s.suggested}
+                             for s in self.manual_steps],
+            "expires_at": self.expires_at.isoformat(),
+            "used": self.used,
+            "result": self.result,
+            "replay": bool(self.grok and self.grok.get("replay")),
+        }
 
     @property
     def expires_at(self) -> datetime:

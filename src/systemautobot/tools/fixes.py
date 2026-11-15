@@ -165,6 +165,28 @@ def start_program_step(exe: str, name: str) -> FixStep:
     return FixStep(tool="open_program", args={"name": name}, run=run)
 
 
+def cancel_print_job_step(printer: str, job_id: int, document: str) -> FixStep:
+    """Cancel one job. A person's own jobs need no admin rights."""
+
+    def run() -> StepResult:
+        if sys.platform != "win32":
+            return StepResult(StepStatus.SKIPPED, "Not on Windows.")
+        import win32print
+
+        try:
+            h = win32print.OpenPrinter(printer, {"DesiredAccess": win32print.PRINTER_ACCESS_USE})
+            try:
+                win32print.SetJob(h, job_id, 0, None, win32print.JOB_CONTROL_DELETE)
+            finally:
+                win32print.ClosePrinter(h)
+        except Exception as e:
+            return StepResult(StepStatus.COULDNT, f"Couldn't cancel the print job on {printer}.", output=str(e))
+        return StepResult(StepStatus.DONE, f"Cancelled the stuck print job on {printer}.",
+                          settings=[TouchedSetting("print_job", f"{printer} #{job_id} {document}", "stuck", "cancelled")])
+
+    return FixStep(tool="cancel_print_job", args={"printer": printer, "job_id": job_id}, run=run)
+
+
 # ---- admin repairs through sab-helper ----------------------------------------------
 
 class AdminLauncher:

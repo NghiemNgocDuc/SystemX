@@ -39,6 +39,24 @@ def _frozen(p: Problem, s: Settings) -> Severity | None:
     return Severity.MAJOR if p.evidence.get("foreground") else Severity.MINOR
 
 
+def _disk_failing(p: Problem, s: Settings) -> Severity | None:
+    return Severity.MAJOR if p.evidence.get("failing") else None
+
+
+def _print(p: Problem, s: Settings) -> Severity | None:
+    return Severity.MINOR if p.evidence.get("stuck") else None
+
+
+def _security(p: Problem, s: Settings) -> Severity | None:
+    if not p.evidence.get("bad"):
+        return None
+    return Severity.MINOR if p.evidence.get("issue") == "signatures" else Severity.MAJOR
+
+
+def _error_dialog(p: Problem, s: Settings) -> Severity | None:
+    return Severity.MINOR if p.evidence.get("seen") else None
+
+
 def _unknown(p: Problem, s: Settings) -> Severity | None:
     return Severity.MINOR
 
@@ -48,6 +66,10 @@ RULES: dict[str, Rule] = {
     "disk_space": _disk,
     "network": _network,
     "frozen_app": _frozen,
+    "disk_failing": _disk_failing,
+    "print_queue": _print,
+    "security": _security,
+    "error_dialog": _error_dialog,
     "unknown": _unknown,
 }
 
@@ -69,7 +91,7 @@ class Triage:
         self._clock = clock
         self.waiting: dict[str, Problem] = {}          # fingerprint -> problem waiting on the person
         self._snoozed: dict[str, tuple[datetime, dict]] = {}
-        self.never: set[str] = set()                   # remembered "Never for this"
+        self.never: set[str] = set(settings.never)     # remembered "Never for this"
         self._popups: deque[datetime] = deque()
 
     # ---- severity ---------------------------------------------------------
@@ -128,6 +150,8 @@ class Triage:
 
     def never_for(self, fingerprint: str) -> None:
         self.never.add(fingerprint)
+        if fingerprint not in self.settings.never:
+            self.settings.never.append(fingerprint)  # saved by the settings store
         self.waiting.pop(fingerprint, None)
 
     def resolved(self, fingerprint: str) -> Problem | None:

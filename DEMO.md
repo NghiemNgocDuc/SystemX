@@ -8,6 +8,42 @@ This is how we test SystemAutoBot and how we show judges that it is effective. T
 
 Every number we show the judges comes from a run we can repeat in front of them.
 
+## Demo on your own laptop
+
+No VM needed. Everything in this section is safe for a real laptop. The VM-only breakers in [lab/break/](lab/break/) refuse to run here, because they really change the network, the clock, and the printer.
+
+**The day before:**
+
+1. `.venv\Scripts\python.exe -m pytest`: all tests should pass.
+2. Start the app once without flags, connect your AI in the first-run setup, and press **Test and save**. Then quit from the tray.
+3. Turn off Do Not Disturb, and don't present the app from a fullscreen slideshow. Popups wait while a fullscreen app runs, which is on purpose, but it would stall the demo.
+
+**On stage (two windows):**
+
+```powershell
+.venv\Scripts\python.exe -m systemautobot app --demo --lab    # checks every 10 s, lab endpoints on
+.venv\Scripts\python.exe lab\laptop_demo.py                    # the safe demo panel
+```
+
+| Step | Panel button or action | What the judges see |
+| --- | --- | --- |
+| 1 | Open the app on Home | "Your PC is fine" and five tiles with this laptop's real drive, internet, programs, printing, and Windows Security |
+| 2 | **1 Freeze a program** | A test window freezes. About 30 to 40 s later, a popup asks "Fix now?" with the unsaved-work warning. Press it: the window closes and reopens. |
+| 3 | Activity | That fix, step by step: what closed, what reopened, and that it was checked again |
+| 4 | **2 Disk is failing** | Recorded disk-error events: a major popup with deliberately no fix button, just "back up now" |
+| 4b | **E Show an error message box** | A real Windows error box appears. About 6 s later it's on Home as "powershell showed an error message", with **Fix for me**. Press it to show think mode: what will be sent, every check the AI runs, and the exact plan, with nothing run until **Allow**. The box's text never reaches the title. |
+| 5 | **3 An app crashed**, **4 Malicious error message**, then **5 Show end-of-day list now** | Small problems wait for one list. The malicious one shows a safe title and offers no fix. With a key connected, the AI explains each item first. |
+| 6 | Ask | Paste `The application was unable to start correctly (0xc000007b)`. The AI looks at the PC, explains, and proposes at most one fix as a card. |
+| 7 | Settings, "What I watch for" | Switch a kind of problem off. Its Home tile says "Not watched". |
+| 8 | **6 Run the red-team suite** | 19 attacks in a console window, every one refused |
+| 9 | Settings, **Run self-check**, then Activity, **Health report** | What works on this PC, and a one-page report to hand to IT |
+
+Steps 4 and 5 use recorded events. Say so out loud: it shows exactly what happens when a real disk fails, without breaking one.
+
+**A real fix (optional):** set Settings, "Low space warning" to 40 GB. If the drive has less free space than that, a small "drive almost full" item joins the end-of-day list, and **Fix it for me** really deletes temporary files older than an hour. Activity then lists the real files. It frees real space and can't be undone, so decide beforehand.
+
+**If the Wi-Fi is bad:** steps 1 to 5, 7, and 8 need no internet. Only Ask and the AI explanations do.
+
 ## The lab
 
 All breaking happens in a **Windows 11 virtual machine**, never on a teammate's real laptop. The breakers change the network, the clock, and Windows Security.
@@ -156,7 +192,7 @@ The VM is projected. The tray icon is visible and Fine.
 - **"Does the AI get admin?"**
   - The AI never runs anything.
   - The app itself never runs as admin.
-  - Admin repairs come from a fixed list of 8, and Windows asks the person every time.
+  - Admin repairs come from a fixed list of 9, and Windows asks the person every time.
 - **"What if Grok is wrong?"**
   - Every fix is checked again afterward.
   - It gets at most 2 tries a day, then the person gets guided steps instead.

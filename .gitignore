@@ -9,3 +9,5 @@ lab/results/
 *.db
 *.db-wal
 *.db-shm
+_site/
+*.spec

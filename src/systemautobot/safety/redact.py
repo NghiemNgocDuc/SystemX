@@ -8,8 +8,8 @@ import threading
 _lock = threading.Lock()
 _secrets: set[str] = set()
 
-# xAI keys start with "xai-". Catch ones we were never told about too.
-_KEY_PATTERN = re.compile(r"xai-[A-Za-z0-9_\-]{16,}")
+# Provider key shapes (xAI, OpenAI, Anthropic, OpenRouter, Google, Groq). Catch ones we were never told about too.
+_KEY_PATTERN = re.compile(r"xai-[A-Za-z0-9_\-]{16,}|sk-[A-Za-z0-9_\-]{20,}|AIza[0-9A-Za-z_\-]{30,}|gsk_[A-Za-z0-9]{20,}")
 REDACTED = "[REDACTED]"
 
 

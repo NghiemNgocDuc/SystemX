@@ -75,6 +75,10 @@ _TABLES = {
     "refusals": """
         at TEXT NOT NULL, card_id TEXT, fingerprint TEXT, reason TEXT NOT NULL, detail TEXT
     """,
+    "ai_usage": """
+        at TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, purpose TEXT NOT NULL,
+        rounds INTEGER NOT NULL, tokens INTEGER NOT NULL, ok INTEGER NOT NULL
+    """,
 }
 
 
@@ -216,6 +220,17 @@ class History:
             "INSERT INTO refusals VALUES (?,?,?,?,?)",
             (_iso(utcnow()), card_id, fingerprint, reason, trim(detail, 500)),
         )
+
+    def add_ai_usage(self, *, provider: str, model: str, purpose: str, rounds: int, tokens: int, ok: bool) -> None:
+        self._exec("INSERT INTO ai_usage VALUES (?,?,?,?,?,?,?)",
+                   (_iso(utcnow()), provider, model, purpose, int(rounds), int(tokens), int(ok)))
+
+    def ai_usage(self, within: timedelta) -> dict[str, int]:
+        """AI requests and tokens in the window. Test calls from setup don't count toward the limit."""
+        rows = self._query(
+            "SELECT COUNT(*) AS calls, COALESCE(SUM(tokens), 0) AS tokens FROM ai_usage "
+            "WHERE at >= ? AND purpose != 'test'", (_iso(utcnow() - within),))
+        return {"calls": int(rows[0]["calls"]), "tokens": int(rows[0]["tokens"])}
 
     # ---- reading ----------------------------------------------------------
 

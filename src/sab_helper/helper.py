@@ -87,6 +87,17 @@ ALLOWLIST: dict[str, dict] = {
         "restore_point": True,
         "special": "reset_windows_update",
     },
+    "defender_signature_update": {
+        "summary": "Updated the Windows Security virus definitions.",
+        "settings": [("defender", "virus definitions", "out of date", "updated")],
+        "commands": [([str(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Windows Defender" / "MpCmdRun.exe"),
+                       "-SignatureUpdate"], {0}, 900)],
+    },
+    "firewall_enable": {
+        "summary": "Turned the Windows firewall back on for every network type.",
+        "settings": [("firewall", "Domain, Private, Public", "off", "on")],
+        "commands": [(ps("Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True"), {0}, 120)],
+    },
     "dns_automatic": {
         "summary": "Switched the DNS servers back to automatic.",
         "special": "dns_automatic",
