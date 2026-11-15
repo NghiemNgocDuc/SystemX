@@ -1,6 +1,6 @@
 # SystemAutoBot: Grok on the PC, doing the computer care
 
-This repository holds SystemAutoBot and its plan. The build order is in [PLAN.md](PLAN.md), and how we test and demo it is in [DEMO.md](DEMO.md). The project website is [site/landing.html](site/landing.html), published to GitHub Pages by [.github/workflows/pages.yml](.github/workflows/pages.yml).
+This repository holds SystemAutoBot and its plan. The build order is in [PLAN.md](PLAN.md), and how we test and demo it is in [DEMO.md](DEMO.md). The project website is [site/landing.html](site/landing.html), published to GitHub Pages by [.github/workflows/pages.yml](.github/workflows/pages.yml). The interactive browser simulation is in [site/demo.html](site/demo.html) and is published as `/demo.html`.
 
 ## Try it
 
@@ -16,6 +16,15 @@ py -3.11 -m venv .venv
 .venv\Scripts\python.exe -m systemautobot check            # every read-only check once
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # dist\SystemAutoBot-windows.zip
 ```
+
+**Try the demo:** open [site/demo.html](site/demo.html) for a browser-only simulation; it does not inspect or change your computer. To see a real, local recovery on disposable demo notes, install the demo panel dependency and run the guided launcher:
+
+```powershell
+.venv\Scripts\python.exe -m pip install httpx
+lab\Start-Demo.cmd
+```
+
+The launcher starts the app in demo/lab mode and opens the live demo panel. The panel never approves a repair: detection and repair happen in the app, where you must choose **Allow**. The main recovery works without an AI key or internet. See [DEMO.md](DEMO.md) for setup and safety details.
 
 **Release:** push a tag such as `v0.1.0`. [.github/workflows/release.yml](.github/workflows/release.yml) tests, builds the zip on Windows, and attaches it to a GitHub Release, which is where the website's Download button points.
 
@@ -339,7 +348,7 @@ flowchart LR
 
 **Pause.** The tray menu has **Pause fixes**. While paused, it keeps checking but offers no fixes. Settings has the same switch.
 
-**Demo mode.** `--demo` shortens the 5-minute checks to 10 seconds and a stuck print job to 30 seconds, opens the window at start, and adds **End of day now** to Settings and the tray menu. It is never on in a normal install. See [DEMO.md](DEMO.md).
+**Demo mode.** `--demo` shortens the 5-minute checks to 10 seconds and a stuck print job to 30 seconds, opens the window at start, and adds **End of day now** to Settings and the tray menu. `--lab` enables the local-only endpoints used by the guided laptop demo; the normal app does not enable them. `lab\Start-Demo.cmd` starts both the app and guided panel with disposable Demo Notes. Separately, [site/demo.html](site/demo.html) is an interactive browser simulation that makes no PC changes. See [DEMO.md](DEMO.md).
 
 ## Compared with similar projects
 
