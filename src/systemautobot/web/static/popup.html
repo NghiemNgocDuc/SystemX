@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SystemAutoBot needs you</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="popup">
+<div class="app">
+  <div id="cards"></div>
+  <div class="row" style="justify-content:flex-end;margin-top:8px">
+    <button id="open-main" class="link">Open SystemAutoBot</button>
+    <button id="close" class="link">Close</button>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+"use strict";
+(async () => {
+  const { api, cardView } = SAB;
+  const key = SAB.params.get("key") || "";
+  const ids = (SAB.params.get("cards") || "").split(",").filter(Boolean);
+  const close = () => api("/api/ui/close_popup", { key }).catch(() => window.close());
+  document.getElementById("close").onclick = close;
+  document.getElementById("open-main").onclick = () => api("/api/ui/open_main", { view: "home" });
+  const st = await api("/api/state");
+  const box = document.getElementById("cards");
+  if (ids.length > 1) box.append(SAB.el("h2", {}, `${ids.length} things need you`));
+  for (const id of ids) {
+    try {
+      const card = await api("/api/cards/" + id);
+      box.append(cardView(card, { via: "fix_now", aiLabel: st.ai.label,
+        onOpenRecord: () => api("/api/ui/open_main", { view: "activity" }),
+        onConnectAI: () => api("/api/ui/open_main", { view: "setup" }),
+        onDismiss: () => { if (ids.length === 1) close(); },
+        onChange: (c, r) => { if (ids.length === 1 && (r.outcome === "not_now" || r.outcome === "never")) setTimeout(close, 1500); } }));
+    } catch (_) { /* already handled elsewhere */ }
+  }
+  if (!box.children.length) close();
+})();
+</script>
+</body>
+</html>

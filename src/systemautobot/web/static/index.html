@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SystemAutoBot</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<!-- First run: a short, skippable two-step setup -->
+<div id="onboard" class="onboard hidden">
+  <div class="box">
+    <h1>Welcome to SystemAutoBot</h1>
+    <p class="muted" style="margin-top:6px">Two quick steps, then I'll keep an eye on this PC from the tray.</p>
+    <ol class="stepper" aria-label="Setup progress">
+      <li id="step-1-label" class="on">1. Connect an AI</li>
+      <li id="step-2-label">2. Choose what I watch</li>
+    </ol>
+
+    <section id="step-1" class="panel" aria-labelledby="s1h">
+      <h2 id="s1h">Connect an AI</h2>
+      <p class="muted small" style="margin-top:4px">I ask it about errors I don't recognize. Your key stays in Windows Credential Manager on this PC.</p>
+      <label class="field" for="provider">Provider</label>
+      <select id="provider"></select>
+      <div id="base-url-box" class="hidden">
+        <label class="field" for="base-url">Service address</label>
+        <input id="base-url" placeholder="https://example.com/v1" autocomplete="off">
+      </div>
+      <label class="field" for="key">API key <span id="key-hint" class="caption"></span></label>
+      <div class="keyrow">
+        <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key">
+        <button id="show-key" type="button">Show</button>
+      </div>
+      <p class="small" style="margin-top:6px"><button id="get-key" class="link" type="button">Where do I get a key?</button>
+        <span id="has-key" class="caption"></span></p>
+      <label class="field" for="model">Model</label>
+      <div class="keyrow">
+        <div class="combo">
+          <input id="model" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="model-list"
+                 autocomplete="off" spellcheck="false" placeholder="Type a model or load the list">
+          <ul id="model-list" class="combo-list hidden" role="listbox" aria-label="Models"></ul>
+        </div>
+        <button id="load-models" type="button">Load my models</button>
+      </div>
+      <div id="setup-status" class="status-line" role="status" aria-live="polite"></div>
+      <div class="actions">
+        <button id="save-setup" class="primary big" type="button">Test and continue</button>
+        <button id="save-anyway" class="hidden" type="button">Save without testing</button>
+        <button id="skip-setup" class="link" type="button">Skip for now</button>
+        <button id="cancel-setup" class="hidden" type="button">Cancel</button>
+      </div>
+      <p class="caption" style="margin-top:12px">Skipping is fine: full drive, no internet, wrong clock, frozen programs and stuck printing are fixed without an AI.</p>
+    </section>
+
+    <section id="step-2" class="panel hidden" aria-labelledby="s2h">
+      <h2 id="s2h">What should I watch for?</h2>
+      <p class="muted small" style="margin-top:4px">Switch off anything you don't want me to handle. I won't check it or ask about it.</p>
+      <div id="watch-list-setup" style="margin-top:10px"></div>
+      <div class="actions">
+        <button id="start-watching" class="primary big" type="button">Start watching</button>
+        <button id="back-step-1" type="button">Back</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- The app: navigation rail + page -->
+<div id="shell" class="shell hidden">
+  <nav class="nav" aria-label="SystemAutoBot">
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="15" fill="#ffffff" stroke="#141218" stroke-width="5"/><path d="M19 21h26v5H24v4h21v14H19v-5h21v-4H19z" fill="#141218"/></svg>
+      <span>SystemAutoBot</span>
+    </div>
+    <button data-view="home" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg>
+      <span class="label">Home</span><span id="badge" class="badge hidden"></span>
+    </button>
+    <button data-view="ask">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
+      <span class="label">Ask</span>
+    </button>
+    <button data-view="activity">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span class="label">Activity</span>
+    </button>
+    <button data-view="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      <span class="label">Settings</span>
+    </button>
+    <div class="spacer"></div>
+    <div class="foot">
+      <div class="row"><span>Fixes</span>
+        <label class="switch" title="Pause fixes"><input id="fixes-on" type="checkbox" aria-label="Fixes on"><span></span></label></div>
+      <div id="ai-foot" class="caption"></div>
+    </div>
+  </nav>
+
+  <main class="page" id="page">
+    <div class="page-inner">
+
+      <section id="view-home" aria-labelledby="home-h">
+        <h1 id="home-h" class="hidden">Home</h1>
+        <div id="hero" class="panel status-hero">
+          <div class="orb" id="hero-orb" aria-hidden="true"></div>
+          <div class="grow">
+            <h2 id="hero-title">Your PC is fine</h2>
+            <p class="muted" id="hero-sub">Watching…</p>
+          </div>
+          <button id="check-now" class="big">Check now</button>
+        </div>
+        <div class="tiles" id="tiles" aria-label="At a glance"></div>
+        <h2 class="section-title" id="needs-h">Needs you</h2>
+        <div id="cards"></div>
+      </section>
+
+      <section id="view-ask" class="hidden" aria-labelledby="ask-h">
+        <div class="page-head"><h1 id="ask-h">Ask</h1><span id="ask-ai" class="caption"></span></div>
+        <div id="ask-banner" class="banner hidden">
+          <span>Connect an AI to ask about errors I don't recognize.</span>
+          <button id="ask-connect" class="primary">Connect an AI</button>
+        </div>
+        <div class="panel">
+          <div id="chat" class="chat" aria-live="polite">
+            <div class="msg bot">Describe what's wrong, or paste an error message. I'll look at this PC and suggest one fix you can approve.</div>
+          </div>
+          <div class="chips" id="chips">
+            <button data-ask="My computer is slow">My computer is slow</button>
+            <button data-ask="Free up space">Free up space</button>
+            <button data-ask="Something broke">Something broke</button>
+          </div>
+          <form id="composer" class="composer">
+            <label for="say" class="hidden">Message</label>
+            <input id="say" autocomplete="off" placeholder="Describe the problem, or paste an error">
+            <button class="primary" type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="view-activity" class="hidden" aria-labelledby="act-h">
+        <div class="page-head"><h1 id="act-h">Activity</h1>
+          <div class="toolbar"><button id="report" class="primary">Health report</button>
+            <button id="export-json">Export JSON</button><button id="export-csv">Export CSV</button></div>
+        </div>
+        <div class="toolbar"><input id="search" placeholder="Search, or type a file path to see what touched it"></div>
+        <div class="group" style="margin-top:14px"><ul id="history" class="list"></ul></div>
+        <div id="history-detail" class="panel hidden" style="margin-top:16px"></div>
+      </section>
+
+      <section id="view-settings" class="hidden" aria-labelledby="set-h">
+        <div class="page-head"><h1 id="set-h">Settings</h1></div>
+
+        <h2 class="section-title">AI</h2>
+        <div class="group">
+          <div class="srow"><div class="grow"><div class="title" id="ai-line">No AI connected</div>
+            <div class="sub">Asked only about errors I don't recognize, and in Ask.</div></div>
+            <button id="change-ai">Change</button><button id="forget-key">Forget key</button></div>
+          <div class="srow"><div class="grow"><div class="title">AI use</div>
+            <div class="sub" id="ai-usage">Loading…</div></div></div>
+          <div class="srow"><div class="grow"><div class="title">Daily limit</div>
+            <div class="sub">The most AI questions I'll ask in a day. The same problem is never asked twice in 24 hours.</div></div>
+            <select id="ai-limit" aria-label="Daily AI limit">
+              <option value="10">10 a day</option><option value="25">25 a day</option><option value="50">50 a day</option>
+              <option value="100">100 a day</option><option value="0">No limit</option></select></div>
+        </div>
+
+        <h2 class="section-title">What I watch for</h2>
+        <div class="group" id="watch-list"></div>
+
+        <h2 class="section-title">When I speak up</h2>
+        <div class="group">
+          <div class="srow"><div class="grow"><div class="title">Low space warning</div><div class="sub">Big problems still pop up right away.</div></div>
+            <select id="warn" aria-label="Low space warning"><option value="10">10 GB</option><option value="20">20 GB</option><option value="40">40 GB</option></select></div>
+          <div class="srow"><div class="grow"><div class="title">End-of-day list</div><div class="sub">Small problems wait for this time.</div></div>
+            <input id="eod" type="time" aria-label="End-of-day list time"></div>
+          <div class="srow"><div class="grow"><div class="title">Keep fix history</div><div class="sub">Days, from 30 to 3650.</div></div>
+            <input id="keep" type="number" min="30" max="3650" aria-label="Days to keep fix history"></div>
+          <div class="srow" id="demo-row"><div class="grow"><div class="title">End of day now</div><div class="sub">Demo mode: show today's list right away.</div></div>
+            <button id="digest-now">Show list</button></div>
+        </div>
+        <div id="settings-status" class="status-line" role="status" aria-live="polite"></div>
+
+        <h2 class="section-title">Remembered choices</h2>
+        <div class="group"><ul id="never" class="list"></ul></div>
+
+        <h2 class="section-title">Self-check</h2>
+        <div class="group">
+          <div class="srow"><div class="grow"><div class="title">Is everything working on this PC?</div>
+            <div class="sub">Checks each part of SystemAutoBot and says what needs attention.</div></div>
+            <button id="run-doctor">Run self-check</button></div>
+          <ul id="doctor" class="list"></ul>
+        </div>
+
+        <p class="footer">Fixes and their history stay on this PC. What you type in Ask and short check results go to the AI you chose, with your key.</p>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="/static/common.js"></script>
+<script src="/static/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>End of day</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="popup">
+<div class="app">
+  <h1>End of day</h1>
+  <p id="lead" class="muted"></p>
+  <ul id="gone" class="list muted small"></ul>
+  <div id="items"></div>
+  <div class="row" style="margin-top:12px">
+    <button id="fix-checked" class="primary hidden">Fix the ones I checked</button>
+    <button id="close">Close</button>
+  </div>
+  <div id="batch" class="result" role="status" aria-live="polite"></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+"use strict";
+(async () => {
+  const { api, el, cardView } = SAB;
+  const close = () => api("/api/ui/close_digest", {}).catch(() => window.close());
+  document.getElementById("close").onclick = close;
+  const [st, d] = await Promise.all([api("/api/state"), api("/api/digest")]);
+  document.getElementById("lead").textContent = d.items.length
+    ? `${d.items.length} small thing${d.items.length > 1 ? "s" : ""} from today. Fix them now, do them yourself, or leave them for tomorrow.`
+    : "Nothing left to look at today.";
+  document.getElementById("gone").replaceChildren(...d.went_away.map((t) => el("li", {}, `Went away on its own: ${t}`)));
+  const boxes = [];
+  const items = document.getElementById("items");
+  for (const card of d.items) {
+    const check = el("input", { type: "checkbox", style: "width:auto;min-height:0", "aria-label": "Include " + card.title });
+    if (card.fix) boxes.push([check, card]);
+    const waiting = card.rollovers >= 3 ? el("p", { class: "muted small" }, `This has been waiting ${card.rollovers} days.`) : null;
+    items.append(el("div", {}, card.fix ? el("label", { class: "row" }, check, "Include in Fix the ones I checked") : null,
+      waiting, cardView(card, { via: "fix_it_for_me", aiLabel: st.ai.label })));
+  }
+  const btn = document.getElementById("fix-checked");
+  btn.classList.toggle("hidden", !boxes.length);
+  btn.onclick = async () => {
+    const chosen = boxes.filter(([c]) => c.checked).map(([, card]) => card);
+    const out = document.getElementById("batch");
+    if (!chosen.length) { out.textContent = "Check at least one first."; return; }
+    btn.disabled = true;
+    const reports = [];
+    for (const [i, card] of chosen.entries()) {   // one at a time
+      out.className = "result working";
+      out.textContent = `Working on ${i + 1} of ${chosen.length}: ${card.fix.title}…`;
+      let r;
+      try { r = await api(`/api/cards/${card.id}/approve`, { via: "fix_it_for_me" }); }
+      catch (e) { r = { outcome: "couldnt", message: e.message }; }
+      reports.push(el("div", {}, el("h3", { style: "margin-top:12px" }, card.title), SAB.fixReport(r)));
+    }
+    out.className = "result plain";
+    out.replaceChildren(el("p", { class: "rep-head" }, `Finished ${chosen.length}. Here's what each fix did:`), ...reports);
+  };
+})();
+</script>
+</body>
+</html>
