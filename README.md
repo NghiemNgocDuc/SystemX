@@ -23,9 +23,13 @@ It runs quietly in the tray. Local playbooks handle common problems; an optional
 flowchart LR
   detect["Detect"] --> diagnose["Match playbook or diagnose"]
   diagnose --> ask{"Approve?"}
-  ask -->|Yes| repair["Safety checks and allowed repair"]
-  ask -->|Later| wait["Wait"]
+  ask --> yes["Yes"]
+  ask --> later["Later"]
+  yes --> repair["Safety checks and allowed repair"]
+  later --> wait["Wait"]
   repair --> result["Verify and record"]
+  classDef choice fill:#e2f0dc,stroke:#236b49,stroke-width:2px,color:#18362d,font-size:20px
+  class yes,later choice
 ```
 
 ## Demos
