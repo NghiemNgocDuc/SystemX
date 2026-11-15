@@ -79,24 +79,27 @@ Every problem, whether the watcher found it or the person typed it, goes through
 
 ```mermaid
 flowchart TD
-  watch["Watcher: Windows events + checks every 5 min"] --> match{"Known problem?"}
-  person["Person types or pastes an error"] --> grok
-  match -->|yes| playbook["Local playbook (no Grok)"]
-  match -->|no| grok["Grok diagnoses with check tools"]
-  playbook --> triage{"Major?"}
+  watch["Watcher: Windows events + local checks"] --> signal["Fingerprint and deduplicate"]
+  person["Person describes a problem"] --> signal
+  signal --> match{"Known problem?"}
+  match -->|yes| playbook["Local playbook checks and fix plan"]
+  match -->|no| grok["Grok diagnoses with read-only checks"]
+  playbook --> triage["Local severity, limits, and routing"]
   grok --> triage
-  triage -->|major| popup["Tray popup now"]
+  triage -->|major| popup["Ask now: app card or notification"]
   triage -->|minor| digest["End-of-day list"]
   popup -->|Not now| digest
-  popup --> choice{"Who fixes it?"}
-  digest --> choice
-  choice -->|Fix it for me| fix["Allowlisted repair"]
-  choice -->|I'll do it myself| manual["Guided steps + Open page buttons"]
-  choice -->|Grok can't fix| manual
-  fix --> verify["Check again"]
+  popup --> decision{"Person chooses"}
+  digest --> decision
+  decision -->|Approve a fix| gate["Re-check target and enforce safety guards"]
+  gate --> runner["Run only an allowlisted repair"]
+  decision -->|Do it myself| manual["Guided steps and Windows settings"]
+  decision -->|No safe repair| manual
+  runner --> verify["Verify with the original check"]
   manual --> verify
-  verify -->|still broken| manual
-  verify --> history["Fix history"]
+  verify -->|Still broken| manual
+  verify --> history["Record steps and outcome in local history"]
+  decision -->|Dismiss| history
 ```
 
 1. **Watch.** The watcher subscribes to the Windows event log (crashes, hangs, disk, update, power, security events) and runs cheap local checks every 5 minutes and at sign-in. It costs no API calls.
