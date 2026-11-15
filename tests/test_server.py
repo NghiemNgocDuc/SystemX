@@ -82,6 +82,28 @@ def test_lab_state_includes_readiness_without_changing_settings(env):
     assert "watcher_health" in response.json()
 
 
+def test_cleanup_demo_is_authenticated_fixed_scope_and_uses_normal_approval(env):
+    client, good, ctx, pipe, *_ = env
+    endpoint = "/api/lab/cleanup/start"
+    assert client.post(endpoint, json={}).status_code == 404
+    ctx.lab_token = "demo-token"
+    lab_headers = {"X-SAB-Lab-Token": ctx.lab_token}
+    assert client.post(endpoint, json={}).status_code == 403
+    assert client.post(endpoint, json={}, headers=lab_headers).status_code == 404
+    ctx.store.settings.demo = True
+    assert client.post(endpoint, json={"folder": "C:/"}, headers=lab_headers).status_code == 400
+    run = client.post(endpoint, json={}, headers=lab_headers).json()
+    assert run["before_bytes"] == 24 * 1024 ** 2 and run["removed_bytes"] == 0
+    assert ctx.history.recent() == []
+    same = client.post(endpoint, json={}, headers=lab_headers).json()
+    assert same["card_id"] == run["card_id"]
+    result = client.post(f"/api/cards/{run['card_id']}/approve", json={"via": "fix_now"}, headers=good).json()
+    assert result["outcome"] == "done" and result["verification"] == "fixed"
+    after = client.get(f"/api/lab/cleanup/{run['run_id']}", headers=lab_headers).json()
+    assert after["remaining_bytes"] == 0 and after["removed_bytes"] == run["before_bytes"]
+    assert client.get("/api/lab/cleanup/missing", headers=lab_headers).status_code == 404
+
+
 @pytest.mark.parametrize("headers", [{}, {"X-SAB-Token": "wrong", "Origin": ORIGIN}])
 def test_api_needs_the_token(env, headers):
     client, *_ = env

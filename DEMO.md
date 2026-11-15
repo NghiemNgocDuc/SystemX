@@ -23,11 +23,27 @@ py -3.12 -m venv .venv
 lab\Start-Demo.cmd
 ```
 
-Start on **Live recovery**. Press **Start live recovery**, keep Demo Notes in front,
-then use **Open approval box** when detection arrives. Read the warning and press
+There are two live demos, both using disposable data and the normal approval box:
+
+1. **Frozen app:** press **Start recovery**, keep Demo Notes in front,
+then use **Review repair** when detection arrives. Read the warning and press
 **Allow** in the app. The panel displays the real repair steps and verification;
 type in the reopened notes window to show that it responds. **Close demo windows /
 start over** clears the disposable test windows while keeping the fix history.
+2. **Free up space:** press **Start cleanup demo**. The app creates six disposable
+files totaling **24 MiB** in its own demo folder and scans them. Open the approval
+box, then choose **Allow**. The panel shows the measured before/remaining sizes and
+bytes recorded as deleted by that repair. It checks the folder again and saves the
+file list in Activity. This is a real file cleanup, not a simulated low-disk alert;
+it does not fill the drive or clean personal temp folders or the Recycle Bin.
+
+Judge introduction: "SystemAutoBot watches for PC problems, asks before a repair,
+then checks and records what changed. First we'll recover a frozen app. Then we'll
+remove disposable files and show the space recovered."
+
+Closing the main app window keeps background monitoring running. Open it again
+from the tray or with **Ctrl+Alt+Space**; choose **Quit** in the tray to stop it.
+The Windows installer starts the app at sign-in. See [BACKGROUND.md](BACKGROUND.md).
 
 The panel checks for paused repairs, disabled frozen-program monitoring, and Autopilot
 before starting. Its **More capabilities** tab labels recorded events and AI-dependent
@@ -55,10 +71,9 @@ No VM needed. Everything in this section is safe for a real laptop. The VM-only 
 | Step | Panel button or action | What the judges see |
 | --- | --- | --- |
 | 1 | Open the app on Home | "Your PC is fine" and five tiles with this laptop's real drive, internet, programs, printing, and Windows Security |
-| 2 | **1 Freeze a program** (keep its window in front) | A test window freezes. About 15 s later a Windows notification says "python is not responding. Fix ready: Close and reopen python." Click it: a small box says in one sentence what the fix does, with the unsaved-work warning, and asks **Allow** or **Not now**. Allow: the window closes and reopens, and the box shows what changed. |
+| 2 | **Frozen app → Start recovery** (keep Demo Notes in front) | Demo Notes freezes. The panel reports actual detection timing. **Review repair** opens the ordinary **Allow / Not now** box with an unsaved-work warning. After Allow, the window reopens and you can type again. |
 | 3 | Activity | That fix, step by step: what closed, what reopened, and that it was checked again |
-| 4 | **2 Disk is failing** | Recorded disk-error events: a notification, then a box offering **Check the drive and open Backup** (opens Windows Backup, then Windows' own online drive check, behind the Windows permission prompt). It says plainly that software can't repair a worn-out drive. |
-| 4a | Settings → **Autopilot** on, plus **Also close frozen programs**, then **1 Freeze a program** again | No click this time: Autopilot closes and reopens the program, then a notification says "Fixed automatically". Activity shows the record marked "Autopilot, no click". Switch it off and the same problem asks first again. |
+| 4 | **Free up space → Start cleanup demo** | Six disposable files occupy 24 MiB. Review and approve their removal. Before: 24 MiB; remaining: 0 MiB; verified removed: 24 MiB, backed by the actual repair record. |
 | 4b | **E Show an error message box** | A real Windows error box appears. About 6 s later it's on Home as "powershell showed an error message", with **Fix for me**. Press it to show think mode: what will be sent, every check the AI runs, and the exact plan, with nothing run until **Allow**. The box's text never reaches the title. |
 | 5 | **3 An app crashed**, **4 Malicious error message**, then **5 Show end-of-day list now** | Small problems wait for one list. The malicious one shows a safe title and offers no fix. With a key connected, the AI explains each item first. |
 | 6 | Ask | Paste `The application was unable to start correctly (0xc000007b)`. The AI looks at the PC, explains, and proposes at most one fix as a card. |

@@ -7,20 +7,30 @@
     #sab-interactive-demo button:focus-visible,#sab-interactive-demo a:focus-visible,#sab-interactive-demo textarea:focus-visible{outline:3px solid var(--sab-green);outline-offset:3px}
     #sab-interactive-demo [hidden]{display:none!important}
     #sab-interactive-demo h2,#sab-interactive-demo h3,#sab-interactive-demo p{margin:0}
-    #sab-interactive-demo .sab-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;border-bottom:1px solid var(--sab-line)}
+    #sab-interactive-demo .sab-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;border-bottom:1px solid var(--sab-line)}
     #sab-interactive-demo .sab-brand{display:flex;align-items:center;gap:9px;font-weight:600}
     #sab-interactive-demo .sab-logo{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--sab-button);color:var(--sab-on-button)}
     #sab-interactive-demo .sab-tag{font-size:12px;color:var(--sab-muted)}
     #sab-interactive-demo .sab-layout{display:grid;grid-template-columns:1.2fr 1fr;gap:26px;padding:26px}
     #sab-interactive-demo .sab-stage{position:relative;background:var(--sab-soft);border-radius:15px;padding:22px;min-width:0;display:flex;flex-direction:column;gap:16px;overflow:hidden}
     #sab-interactive-demo .sab-stage-label{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--sab-muted);font-weight:600}
+    #sab-interactive-demo .sab-demo-picker{display:flex;flex-wrap:wrap;gap:7px}
+    #sab-interactive-demo .sab-demo-picker .sab-button{flex:1;white-space:nowrap;padding:8px 12px;font-size:12px}
+    #sab-interactive-demo .sab-demo-picker [aria-pressed="true"]{background:var(--sab-button);border-color:var(--sab-button);color:var(--sab-on-button)}
     #sab-interactive-demo .sab-window{border:1px solid var(--sab-line);border-radius:10px;background:var(--sab-surface);overflow:hidden;box-shadow:0 10px 30px light-dark(#18362d0b,#00000020);transition:transform .3s}
-    #sab-interactive-demo[data-phase="frozen"] .sab-window{transform:rotate(-1.5deg)}
+    #sab-interactive-demo[data-demo="freeze"][data-phase="frozen"] .sab-window{transform:rotate(-1.5deg)}
     #sab-interactive-demo .sab-window-head{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;border-bottom:1px solid var(--sab-line);font-size:12px}
     #sab-interactive-demo .sab-window-head span:last-child{color:var(--sab-green)}
     #sab-interactive-demo[data-phase="frozen"] .sab-window-head span:last-child,#sab-interactive-demo[data-phase="detected"] .sab-window-head span:last-child,#sab-interactive-demo[data-phase="deferred"] .sab-window-head span:last-child{color:var(--sab-warn)}
     #sab-interactive-demo textarea{display:block;resize:vertical;width:100%;height:103px;min-height:80px;padding:14px;font:14px/1.6 "Segoe UI",system-ui,sans-serif;border:0;background:var(--sab-surface);color:var(--sab-ink)}
     #sab-interactive-demo textarea:disabled{opacity:.65}
+    #sab-interactive-demo .sab-storage{padding:15px}
+    #sab-interactive-demo .sab-storage-values{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+    #sab-interactive-demo .sab-storage-values span{display:block;color:var(--sab-muted);font-size:11px}
+    #sab-interactive-demo .sab-storage-values strong{display:block;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+    #sab-interactive-demo .sab-storage-track{height:8px;border-radius:6px;background:var(--sab-soft);margin:12px 0;overflow:hidden}
+    #sab-interactive-demo .sab-storage-fill{height:100%;width:0;background:var(--sab-green);transition:width .7s ease}
+    #sab-interactive-demo .sab-file-list{font-size:12px;color:var(--sab-muted);min-height:36px}
     #sab-interactive-demo .sab-notice{background:var(--sab-surface);border:1px solid var(--sab-line);border-radius:12px;padding:17px;min-height:205px}
     #sab-interactive-demo .sab-notice.changed{animation:sab-enter .3s ease-out}
     #sab-interactive-demo .sab-notice h3{font-size:17px;line-height:1.35;font-weight:600;margin:0 0 7px}
@@ -31,7 +41,7 @@
     #sab-interactive-demo .sab-button:hover{transform:translateY(-1px)}
     #sab-interactive-demo .sab-button.primary{background:var(--sab-button);border-color:var(--sab-button);color:var(--sab-on-button)}
     #sab-interactive-demo .sab-button:disabled{opacity:.55;cursor:wait;transform:none}
-    #sab-interactive-demo .sab-steps{display:flex;gap:7px;justify-content:space-between;font-size:11px;color:var(--sab-muted)}
+    #sab-interactive-demo .sab-steps{display:flex;flex-wrap:wrap;gap:7px;justify-content:space-between;font-size:11px;color:var(--sab-muted)}
     #sab-interactive-demo .sab-steps span{padding:4px 0;border-bottom:2px solid transparent}
     #sab-interactive-demo .sab-steps .active{color:var(--sab-ink);border-color:var(--sab-green);font-weight:600}
     #sab-interactive-demo .sab-copy{display:flex;flex-direction:column;justify-content:center;padding:8px 0}
@@ -53,10 +63,12 @@
   </style>
   <div class="sab-header"><div class="sab-brand"><span class="sab-logo" aria-hidden="true">S</span>SystemAutoBot</div><span class="sab-tag">Interactive simulation</span></div>
   <div class="sab-layout">
-    <section class="sab-stage" aria-label="Try the frozen-app demo">
-      <div class="sab-stage-label">Try a complete recovery</div>
-      <div class="sab-window"><div class="sab-window-head"><span>Demo Notes</span><span id="sab-window-status">Responding</span></div><textarea id="sab-notes" aria-label="Disposable demo notes" spellcheck="false">A little work in progress.
+    <section class="sab-stage" aria-label="Try two SystemAutoBot demos">
+      <div class="sab-stage-label">Two problems. You approve the fix.</div>
+      <div class="sab-demo-picker" role="group" aria-label="Choose a demo"><button type="button" class="sab-button" data-sab-demo="freeze" aria-pressed="true">1 · Frozen app</button><button type="button" class="sab-button" data-sab-demo="cleanup" aria-pressed="false">2 · Free up space</button></div>
+      <div class="sab-window" id="sab-notes-window"><div class="sab-window-head"><span>Demo Notes</span><span id="sab-window-status">Responding</span></div><textarea id="sab-notes" aria-label="Disposable demo notes" spellcheck="false">A little work in progress.
 These are disposable demo notes.</textarea></div>
+      <div class="sab-window" id="sab-cleanup-window" hidden><div class="sab-window-head"><span>Disposable demo folder</span><span>Example data</span></div><div class="sab-storage"><div class="sab-storage-values"><div><span>Before</span><strong id="sab-space-before">0 MiB</strong></div><div><span>Remaining</span><strong id="sab-space-remaining">0 MiB</strong></div><div><span>Recovered</span><strong id="sab-space-recovered">0 MiB</strong></div></div><div class="sab-storage-track" aria-hidden="true"><div class="sab-storage-fill" id="sab-storage-fill"></div></div><p class="sab-file-list" id="sab-file-list">An empty folder, ready for disposable demo files.</p></div></div>
       <div class="sab-notice" id="sab-notice">
         <div aria-live="polite" aria-atomic="true"><h3 id="sab-title">Let’s give it a problem.</h3><p id="sab-description">Freeze this example app. Watch SystemAutoBot notice it and offer a repair.</p></div>
         <p class="sab-warning" id="sab-warning" hidden>Unsaved text in this example will be lost.</p>
@@ -68,7 +80,7 @@ These are disposable demo notes.</textarea></div>
     <section class="sab-copy" aria-label="Get SystemAutoBot">
       <div class="sab-eyebrow">Your everyday Windows helper</div>
       <h2>PC problems.<br><em>Handled.</em><br>Back to your day.</h2>
-      <p>It notices common PC issues, asks before a repair, and shows you what changed.</p>
+      <p>Unfreeze an app. Recover storage space. SystemAutoBot asks before a repair and shows you what changed.</p>
       <a class="sab-button primary sab-download" href="https://github.com/NghiemNgocDuc/SystemX/releases" target="_blank" rel="noopener noreferrer"><i data-lucide="download" aria-hidden="true"></i>Download for Windows</a>
       <p class="sab-fine">Windows 10 & 11 · Opens GitHub releases.<br>The installer must be published there first.</p>
       <div class="sab-benefit"><i data-lucide="check" aria-hidden="true"></i>Built-in repairs work without an AI key.</div>
@@ -82,27 +94,54 @@ These are disposable demo notes.</textarea></div>
       const get=id=>root.querySelector('#'+id);
       const notes=get('sab-notes'),primary=get('sab-primary'),secondary=get('sab-secondary');
       const sample='A little work in progress.\nThese are disposable demo notes.';
-      let phase='ready',timer;
+      let demo='freeze',phase='ready',timer;
       const config={
+        freeze:{
         ready:['Responding','Let’s give it a problem.','Freeze this example app. Watch SystemAutoBot notice it and offer a repair.','Freeze the example app','',0],
         frozen:['Not responding','The example app is frozen.','SystemAutoBot is checking for a response…','Detecting…','',1],
         detected:['Not responding','Demo Notes is not responding.','Close and reopen it? Review the warning, then choose whether to allow the repair.','Allow repair','Not now',2],
         deferred:['Not responding','Okay, the repair can wait.','Nothing was changed. The example is still frozen until you allow a repair.','Review the repair','Start over',2],
         repairing:['Restarting…','Repairing with your approval.','Closing the frozen example, reopening it, and checking that it responds.','Repairing…','',2],
         fixed:['Responding again','Back to work.','The example responds again. Try typing in the notes above. Here is the simulated repair record.','Run demo again','',3]
+        },
+        cleanup:{
+          ready:['Empty','Make a little room.','Create six disposable example files. Then see how approval and a measured cleanup work.','Create example files','',0],
+          frozen:['Checking…','Six example files are ready.','Checking the disposable demo folder for files that can be removed…','Checking…','',1],
+          detected:['24 MiB found','Recover 24 MiB from demo files?','Remove only the six disposable files in this example folder. Review the amount, then approve the cleanup.','Allow cleanup','Not now',2],
+          deferred:['24 MiB remains','Your files stay until you approve.','Nothing was removed. All six example files still occupy 24 MiB in the simulated folder.','Review cleanup','Start over',2],
+          repairing:['Cleaning…','Cleaning with your approval.','Removing the six disposable example files and checking the folder again.','Cleaning…','',2],
+          fixed:['Empty again','24 MiB recovered.','The example folder went from 24 MiB to 0 MiB. Here is the simulated cleanup record.','Run demo again','',3]
+        }
       };
-      function save(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{demo:'SystemAutoBot recovery simulation',phase},privateContent:{phase}}).catch(()=>{});}
-      function render(){const c=config[phase];root.dataset.phase=phase;get('sab-window-status').textContent=c[0];get('sab-title').textContent=c[1];get('sab-description').textContent=c[2];primary.textContent=c[3];secondary.textContent=c[4];secondary.hidden=!c[4];primary.disabled=phase==='frozen'||phase==='repairing';notes.disabled=!['ready','fixed'].includes(phase);get('sab-warning').hidden=phase!=='detected';get('sab-record').hidden=phase!=='fixed';root.querySelectorAll('[data-sab-step]').forEach(el=>el.classList.toggle('active',Number(el.dataset.sabStep)===c[5]));const notice=get('sab-notice');notice.classList.remove('changed');void notice.offsetWidth;notice.classList.add('changed');}
+      const records={freeze:['Approval received','Closed the frozen example','Reopened Demo Notes','Re-check: responding'],cleanup:['Approval received','Removed six disposable example files','Re-check: folder contains 0 MiB','Space recovered: 24 MiB (example data)']};
+      function save(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{simulation:'SystemAutoBot',demo,phase},privateContent:{demo,phase}}).catch(()=>{});}
+      function render(){
+        const c=config[demo][phase],cleanup=demo==='cleanup';
+        root.dataset.phase=phase;root.dataset.demo=demo;
+        get('sab-notes-window').hidden=cleanup;get('sab-cleanup-window').hidden=!cleanup;
+        get('sab-window-status').textContent=c[0];get('sab-title').textContent=c[1];get('sab-description').textContent=c[2];
+        primary.textContent=c[3];secondary.textContent=c[4];secondary.hidden=!c[4];primary.disabled=phase==='frozen'||phase==='repairing';notes.disabled=!['ready','fixed'].includes(phase);
+        get('sab-warning').hidden=phase!=='detected';get('sab-warning').textContent=cleanup?'Only disposable demo files are included. Deletion needs your approval.':'Unsaved text in this example will be lost.';
+        get('sab-record').hidden=phase!=='fixed';get('sab-record').querySelectorAll('li').forEach((el,index)=>el.textContent=records[demo][index]);
+        const created=phase!=='ready',cleaned=phase==='fixed';
+        get('sab-space-before').textContent=(created?24:0)+' MiB';get('sab-space-remaining').textContent=(created&&!cleaned?24:0)+' MiB';get('sab-space-recovered').textContent=(cleaned?24:0)+' MiB';
+        get('sab-storage-fill').style.width=created&&!cleaned?'100%':'0%';
+        get('sab-file-list').textContent=!created?'An empty folder, ready for disposable demo files.':cleaned?'0 files remaining · 6 disposable files removed.':'6 disposable files × 4 MiB each · 24 MiB total.';
+        root.querySelectorAll('[data-sab-demo]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.sabDemo===demo)));
+        root.querySelectorAll('[data-sab-step]').forEach(el=>{const index=Number(el.dataset.sabStep);el.classList.toggle('active',index===c[5]);el.textContent=(cleanup?['1 Create','2 Check','3 Approve','4 Measure']:['1 Freeze','2 Detect','3 Approve','4 Verify'])[index];});
+        const notice=get('sab-notice');notice.classList.remove('changed');void notice.offsetWidth;notice.classList.add('changed');
+      }
       function change(next){phase=next;render();save();}
       primary.addEventListener('click',()=>{
         clearTimeout(timer);
         if(phase==='ready'){change('frozen');timer=setTimeout(()=>change('detected'),1400);}
-        else if(phase==='detected'){change('repairing');timer=setTimeout(()=>{notes.value='Demo Notes is responding again.\nTry typing here.';change('fixed');},1600);}
+        else if(phase==='detected'){change('repairing');timer=setTimeout(()=>{if(demo==='freeze')notes.value='Demo Notes is responding again.\nTry typing here.';change('fixed');},1600);}
         else if(phase==='deferred'){change('detected');}
         else if(phase==='fixed'){notes.value=sample;change('ready');}
       });
       secondary.addEventListener('click',()=>{clearTimeout(timer);if(phase==='detected')change('deferred');else{notes.value=sample;change('ready');}});
-      function restore(state){const saved=state?.privateContent?.phase||state?.modelContent?.phase;if(!config[saved])return;clearTimeout(timer);phase=saved==='frozen'?'detected':saved==='repairing'?'detected':saved;if(phase==='fixed')notes.value='Demo Notes is responding again.\nTry typing here.';render();}
+      root.querySelectorAll('[data-sab-demo]').forEach(el=>el.addEventListener('click',()=>{if(el.dataset.sabDemo===demo)return;clearTimeout(timer);demo=el.dataset.sabDemo;notes.value=sample;change('ready');}));
+      function restore(state){const saved=state?.privateContent?.phase||state?.modelContent?.phase,mode=state?.privateContent?.demo||state?.modelContent?.demo,selected=mode==='cleanup'?'cleanup':'freeze';if(!config[selected][saved])return;clearTimeout(timer);demo=selected;phase=saved==='frozen'||saved==='repairing'?'detected':saved;notes.value=phase==='fixed'?'Demo Notes is responding again.\nTry typing here.':sample;render();}
       render();restore(window.openai?.widgetState);
       window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
     })();

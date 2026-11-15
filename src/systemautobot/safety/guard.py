@@ -135,6 +135,34 @@ class Guard:
                 pass
         return report
 
+    def delete_known_files(self, files: dict[Path, tuple]) -> DeleteReport:
+        """Remove only an explicit manifest whose files still match their creation stats.
+
+        Unlike folder cleanup, this never discovers additional files or directories.
+        Used for disposable demo files created in this process.
+        """
+        def check(path, expected):
+            self.check_delete(path)
+            st = path.stat()
+            identity = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+            if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or identity != expected:
+                raise GuardRefusal("A demo file changed; cleanup is stopped.")
+            return st
+
+        for path, expected in files.items():
+            check(path, expected)
+        report = DeleteReport()
+        for path, expected in files.items():
+            st = check(path, expected)
+            try:
+                os.remove(path)
+            except OSError:
+                report.skipped_in_use += 1
+                continue
+            report.files.append(TouchedFile(str(path), "deleted", st.st_size, st.st_mtime))
+            report.bytes_freed += st.st_size
+        return report
+
     # ---- processes --------------------------------------------------------
 
     def check_close(self, pid: int, *, allow_explorer: bool = False):

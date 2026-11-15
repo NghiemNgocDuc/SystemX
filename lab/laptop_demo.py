@@ -19,7 +19,7 @@ from tkinter import ttk
 import urllib.error
 import urllib.request
 
-from demo_flow import DemoSession, readiness
+from demo_flow import CleanupSession, DemoSession, readiness
 from systemautobot.demo_support import notes_command
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,37 +92,43 @@ class DemoPanel:
         self.children: list[subprocess.Popen] = []
         self.state: dict = {}
         self.record: dict | None = None
+        self.cleanup_session: CleanupSession | None = None
+        self.cleanup_measurement: dict | None = None
+        self.cleanup_record: dict | None = None
+        self.cleanup_complete = False
+        self.cleanup_can_retry = False
         self.polling = False
         self.busy = False
         self.closed = False
         root.title("SystemAutoBot - live demo")
-        root.geometry("1000x790")
-        root.minsize(820, 680)
+        root.geometry("900x680")
+        root.minsize(820, 620)
         root.configure(bg=BG)
         root.protocol("WM_DELETE_WINDOW", self.close)
         style = ttk.Style(root)
         style.theme_use("clam")
         style.configure("TNotebook", background=BG, borderwidth=0)
-        style.configure("TNotebook.Tab", padding=(18, 10), font=("Segoe UI", 11))
+        style.configure("TNotebook.Tab", padding=(14, 7), font=("Segoe UI", 11))
         style.configure("TFrame", background=BG)
 
         header = tk.Frame(root, bg=BG)
-        header.pack(fill="x", padx=24, pady=(20, 12))
-        self.label(header, "SYSTEMAUTOBOT / LIVE DEMO", 10, MUTED).pack(anchor="w")
-        self.label(header, "A frozen app. One approval. A visible recovery.", 23, bold=True).pack(anchor="w", pady=(6, 4))
+        header.pack(fill="x", padx=20, pady=(12, 8))
+        self.label(header, "SystemAutoBot: two real demos.", 21, bold=True).pack(anchor="w", pady=(4, 2))
         self.label(header, "SystemAutoBot notices PC problems, offers a repair, and records what changed.", 12).pack(anchor="w")
         self.connection = tk.StringVar(value="Connecting to the demo app...")
-        self.label(header, self.connection, 11, ACCENT).pack(anchor="w", pady=(12, 0))
+        self.label(header, self.connection, 10, ACCENT).pack(anchor="w", pady=(6, 0))
 
         tabs = ttk.Notebook(root)
-        tabs.pack(fill="both", expand=True, padx=24, pady=(0, 16))
-        live, more = ttk.Frame(tabs), ttk.Frame(tabs)
-        tabs.add(live, text="1  Live recovery")
-        tabs.add(more, text="2  More capabilities")
+        tabs.pack(fill="both", expand=True, padx=20, pady=(0, 8))
+        live, cleanup, more = ttk.Frame(tabs), ttk.Frame(tabs), ttk.Frame(tabs)
+        tabs.add(live, text="1  Frozen app")
+        tabs.add(cleanup, text="2  Free up space")
+        tabs.add(more, text="More capabilities")
         self.build_live(live)
+        self.build_cleanup(cleanup)
         self.build_more(more)
-        self.message = tk.StringVar(value="Only disposable demo notes are used. The main recovery needs no internet or AI key.")
-        self.label(root, self.message, 11, MUTED, wrap=930).pack(fill="x", padx=24, pady=(0, 16))
+        self.message = tk.StringVar(value="Both demos use disposable test data and need no AI key. Close the app window to keep monitoring in the tray.")
+        self.label(root, self.message, 10, MUTED, wrap=850).pack(fill="x", padx=20, pady=(0, 10))
         root.after(100, self.drain)
         self.poll()
 
@@ -139,11 +145,11 @@ class DemoPanel:
                          bg=ACCENT if primary else SURFACE, fg=SURFACE if primary else INK,
                          activebackground="#124ba9" if primary else "#e6ebf2",
                          activeforeground=SURFACE if primary else INK,
-                         relief="flat", bd=0, padx=16, pady=12, cursor="hand2", takefocus=True)
+                         relief="flat", bd=0, padx=12, pady=8, cursor="hand2", takefocus=True)
 
     def build_live(self, parent):
         steps = tk.Frame(parent, bg=BG)
-        steps.pack(fill="x", pady=16)
+        steps.pack(fill="x", pady=10)
         self.steps = []
         for name in ("1  Freeze", "2  Detect", "3  Approve", "4  Check + record"):
             cell = self.label(steps, name, 12, MUTED, bold=True)
@@ -154,33 +160,91 @@ class DemoPanel:
         area.columnconfigure(0, weight=1, uniform="col")
         area.columnconfigure(1, weight=1, uniform="col")
         area.rowconfigure(0, weight=1)
-        left = tk.Frame(area, bg=SURFACE, padx=20, pady=20)
+        left = tk.Frame(area, bg=SURFACE, padx=16, pady=14)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right = tk.Frame(area, bg=SURFACE, padx=20, pady=20)
+        right = tk.Frame(area, bg=SURFACE, padx=16, pady=14)
         right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
         self.label(left, "WHAT TO SHOW", 10, MUTED, bold=True).pack(anchor="w")
         self.title = tk.StringVar(value="Start with a real frozen test window.")
-        self.label(left, self.title, 20, bold=True, wrap=390).pack(fill="x", pady=(10, 14))
+        self.label(left, self.title, 17, bold=True, wrap=365).pack(fill="x", pady=(8, 10))
         self.next = tk.StringVar(value="Press Start live recovery. Demo Notes opens, then freezes after 3 seconds. SystemAutoBot must detect it on its own.")
-        self.label(left, self.next, 12, wrap=390).pack(fill="x", pady=(0, 20))
-        self.start_button = self.button(left, "Start live recovery", self.start, primary=True)
-        self.start_button.pack(fill="x", pady=4)
-        self.open_button = self.button(left, "Open approval box", self.open_card)
-        self.open_button.pack(fill="x", pady=4)
+        self.label(left, self.next, 11, wrap=365).pack(fill="x", pady=(0, 10))
+        actions = tk.Frame(left, bg=SURFACE)
+        actions.pack(fill="x", pady=4)
+        self.start_button = self.button(actions, "Start recovery", self.start, primary=True)
+        self.start_button.pack(side="left", expand=True, fill="x", padx=(0, 4))
+        self.open_button = self.button(actions, "Review repair", self.open_card)
+        self.open_button.pack(side="left", expand=True, fill="x", padx=(4, 0))
         self.open_button.config(state="disabled")
         self.button(left, "Close demo windows / start over", self.tidy).pack(fill="x", pady=4)
-        self.label(left, "SAY THIS", 10, MUTED, bold=True).pack(anchor="w", pady=(24, 8))
-        self.label(left, '"It found the frozen program without a prompt. I choose whether to allow the repair. Then it checks again and keeps a record."',
-                   12, wrap=390).pack(fill="x")
+        self.label(left, '"It spots the frozen app, asks permission, and records the repair."',
+                   11, MUTED, wrap=365).pack(fill="x", pady=(10, 0))
         self.label(right, "LIVE EVIDENCE", 10, MUTED, bold=True).pack(anchor="w")
-        self.label(right, "From this run's app card and fix history", 11, MUTED, wrap=390).pack(fill="x", pady=(6, 16))
+        self.label(right, "From this run's app card and fix history", 10, MUTED, wrap=365).pack(fill="x", pady=(6, 10))
         self.evidence = tk.Text(right, width=35, height=12, bg=SURFACE, fg=INK, relief="flat",
-                                wrap="word", font=("Segoe UI", 12), padx=0, pady=4, state="disabled")
+                                wrap="word", font=("Segoe UI", 11), padx=0, pady=4, state="disabled")
         self.evidence.pack(fill="both", expand=True)
         self.set_evidence(["No run yet.", "Detection, repair steps, and re-check results appear here when the app reports them.",
                            "After repair, type in the reopened notes window to demonstrate that it responds."])
 
+    def build_cleanup(self, parent):
+        steps = tk.Frame(parent, bg=BG)
+        steps.pack(fill="x", pady=10)
+        self.cleanup_steps = []
+        for name in ("1  Create test files", "2  Review", "3  Approve", "4  Measure + record"):
+            cell = self.label(steps, name, 11, MUTED, bold=True)
+            cell.pack(side="left", expand=True, fill="x")
+            self.cleanup_steps.append(cell)
+        area = tk.Frame(parent, bg=BG)
+        area.pack(fill="both", expand=True)
+        area.columnconfigure(0, weight=1, uniform="col")
+        area.columnconfigure(1, weight=1, uniform="col")
+        area.rowconfigure(0, weight=1)
+        left = tk.Frame(area, bg=SURFACE, padx=16, pady=14)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        right = tk.Frame(area, bg=SURFACE, padx=16, pady=14)
+        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        self.label(left, "WHAT TO SHOW", 10, MUTED, bold=True).pack(anchor="w")
+        self.cleanup_title = tk.StringVar(value="Create 24 MiB of disposable files.")
+        self.label(left, self.cleanup_title, 17, bold=True, wrap=365).pack(fill="x", pady=(8, 10))
+        self.cleanup_next = tk.StringVar(value="Start creates real test files in a dedicated demo folder and scans that folder. Then approve the cleanup and compare the measured sizes.")
+        self.label(left, self.cleanup_next, 11, wrap=365).pack(fill="x", pady=(0, 10))
+        self.cleanup_start_button = self.button(left, "Start cleanup demo", self.start_cleanup, primary=True)
+        self.cleanup_start_button.pack(fill="x", pady=4)
+        self.cleanup_open_button = self.button(left, "Open approval box", self.open_cleanup_card)
+        self.cleanup_open_button.pack(fill="x", pady=4)
+        self.cleanup_open_button.config(state="disabled")
+        self.label(left, '"These are real disposable files. I approve their removal, then SystemAutoBot measures what remains and records the result."',
+                   11, MUTED, wrap=365).pack(fill="x", pady=(10, 0))
+        self.label(left, "This demo scans its test folder when started. It does not fill the drive or simulate a low-disk alert.",
+                   10, MUTED, wrap=365).pack(fill="x", pady=(10, 0))
+        self.label(right, "REAL FILE SIZES", 10, MUTED, bold=True).pack(anchor="w")
+        self.cleanup_metrics = {}
+        for key, title in (("before", "Before cleanup"), ("remaining", "Still in folder"), ("recovered", "Verified removed")):
+            row = tk.Frame(right, bg=SURFACE)
+            row.pack(fill="x", pady=(8, 0))
+            self.label(row, title, 11, MUTED).pack(side="left")
+            value = tk.StringVar(value="—")
+            self.cleanup_metrics[key] = value
+            self.label(row, value, 12, ACCENT, bold=True).pack(side="right")
+        self.label(right, "LIVE EVIDENCE", 10, MUTED, bold=True).pack(anchor="w", pady=(16, 6))
+        self.cleanup_evidence = tk.Text(right, width=35, height=8, bg=SURFACE, fg=INK, relief="flat",
+                                        wrap="word", font=("Segoe UI", 10), state="disabled")
+        self.cleanup_evidence.pack(fill="both", expand=True)
+        self.set_cleanup_evidence(["No run yet. Only files generated for this demo are eligible for removal.",
+                                   "Before and after measurements and the ordinary app repair record appear here."])
+
     def build_more(self, parent):
+        canvas = tk.Canvas(parent, bg=BG, height=390, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        content = tk.Frame(canvas, bg=BG)
+        window = canvas.create_window((0, 0), window=content, anchor="nw")
+        content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+        parent = content
         self.label(parent, "Show these after the live recovery", 18, bold=True).pack(anchor="w", pady=(16, 6))
         self.label(parent, "Each example demonstrates a different capability. Recorded events are labeled; their repair buttons can still run real actions.",
                    11, MUTED, wrap=900).pack(anchor="w", pady=(0, 8))
@@ -217,6 +281,12 @@ class DemoPanel:
         self.evidence.delete("1.0", "end")
         self.evidence.insert("1.0", "\n\n".join(line for line in lines if line))
         self.evidence.config(state="disabled")
+
+    def set_cleanup_evidence(self, lines):
+        self.cleanup_evidence.config(state="normal")
+        self.cleanup_evidence.delete("1.0", "end")
+        self.cleanup_evidence.insert("1.0", "\n\n".join(line for line in lines if line))
+        self.cleanup_evidence.config(state="disabled")
 
     def action(self, fn):
         if self.busy:
@@ -259,6 +329,28 @@ class DemoPanel:
             self.action(lambda: (lab_call("/api/lab/show_card", {"card_id": card_id}),
                                  "Approval box opened. Read the warning and choose Allow or Not now in SystemAutoBot.")[1])
 
+    def start_cleanup(self):
+        if self.busy or (self.cleanup_session and not self.cleanup_complete and not self.cleanup_can_retry):
+            return
+        problem = readiness(self.state, frozen=False) if self.state else "Waiting for the demo app connection."
+        if problem:
+            self.message.set(problem)
+            return
+
+        def begin():
+            measured = lab_call("/api/lab/cleanup/start", {})
+            self.events.put(("cleanup_started", measured))
+            return "Demo folder checked and measured. Open the ordinary approval box to review the cleanup."
+
+        self.action(begin)
+        self.render()
+
+    def open_cleanup_card(self):
+        if self.cleanup_session:
+            card_id = self.cleanup_session.card_id
+            self.action(lambda: (lab_call("/api/lab/show_card", {"card_id": card_id}),
+                                 "Review the exact demo folder, then choose Allow or Not now in SystemAutoBot.")[1])
+
     def tidy(self):
         # Only exact test-program processes. Never close arbitrary Python programs by substring.
         from systemautobot.demo_support import is_demo_notes
@@ -289,6 +381,7 @@ class DemoPanel:
             return
         self.polling = True
         active = self.session
+        cleanup_active = self.cleanup_session
 
         def worker():
             try:
@@ -298,7 +391,14 @@ class DemoPanel:
                     rec = next((r for r in state.get("history", []) if r.get("card_id") == active.card_id), None)
                     if rec:
                         record = lab_call("/api/lab/history/" + rec["id"])
-                self.events.put(("state", (state, record, active)))
+                cleanup_record = None
+                measured = None
+                if cleanup_active:
+                    measured = lab_call("/api/lab/cleanup/" + cleanup_active.run_id)
+                    rec = next((r for r in state.get("history", []) if r.get("card_id") == cleanup_active.card_id), None)
+                    if rec:
+                        cleanup_record = lab_call("/api/lab/history/" + rec["id"])
+                self.events.put(("state", (state, record, active, measured, cleanup_record, cleanup_active)))
             except Exception as e:
                 self.events.put(("connection_error", str(e)))
             finally:
@@ -320,6 +420,26 @@ class DemoPanel:
             stage = 0
         for i, cell in enumerate(self.steps, 1):
             cell.config(fg=ACCENT if i <= stage else MUTED)
+        cleanup_problem = readiness(self.state, frozen=False) if self.state else "Waiting for the demo app."
+        cleanup_stage = 0
+        if self.cleanup_session:
+            view = self.cleanup_session.observe(self.state, self.cleanup_measurement, self.cleanup_record)
+            self.cleanup_complete = view["complete"]
+            self.cleanup_can_retry = view["can_retry"]
+            cleanup_stage = view["stage"]
+            self.cleanup_title.set(view["title"])
+            self.cleanup_next.set(view["next"])
+            self.set_cleanup_evidence(view["evidence"])
+            for name, value in self.cleanup_metrics.items():
+                value.set(view[name])
+            self.cleanup_open_button.config(state="normal" if view["can_open"] and not self.busy and not cleanup_problem else "disabled")
+        self.cleanup_start_button.config(
+            text="Run cleanup demo again" if self.cleanup_complete else
+                 "Review cleanup again" if self.cleanup_can_retry else "Start cleanup demo",
+            state="normal" if self.state and not cleanup_problem and not self.busy
+            and (not self.cleanup_session or self.cleanup_complete or self.cleanup_can_retry) else "disabled")
+        for i, cell in enumerate(self.cleanup_steps, 1):
+            cell.config(fg=ACCENT if i <= cleanup_stage else MUTED)
 
     def drain(self):
         if self.closed:
@@ -327,17 +447,37 @@ class DemoPanel:
         while not self.events.empty():
             kind, value = self.events.get_nowait()
             if kind == "state":
-                self.state, record, active = value
+                self.state, record, active, measured, cleanup_record, cleanup_active = value
                 if active is self.session:
                     self.record = record
-                issue = readiness(self.state)
-                self.connection.set("Demo app connected. " + (issue or "Ready for a live recovery."))
+                if cleanup_active is self.cleanup_session:
+                    self.cleanup_measurement = measured
+                    self.cleanup_record = cleanup_record
+                issue = readiness(self.state, frozen=False)
+                self.connection.set("Demo app connected. " + (issue or "Ready for both demos. Repairs need your approval."))
                 self.render()
             elif kind == "connection_error":
                 self.state = {}
                 self.connection.set(value)
                 self.start_button.config(state="disabled")
                 self.open_button.config(state="disabled")
+                self.cleanup_start_button.config(state="disabled")
+                self.cleanup_open_button.config(state="disabled")
+                if self.cleanup_session:
+                    self.cleanup_measurement = None
+                    self.cleanup_record = None
+                    self.cleanup_complete = False
+                    self.cleanup_can_retry = False
+                    self.cleanup_title.set("Connection lost. Waiting for a fresh measurement.")
+                    self.cleanup_metrics["remaining"].set("—")
+                    self.cleanup_metrics["recovered"].set("Not verified")
+            elif kind == "cleanup_started":
+                self.cleanup_session = CleanupSession(value["run_id"], value["card_id"])
+                self.cleanup_measurement = value
+                self.cleanup_record = None
+                self.cleanup_complete = False
+                self.cleanup_can_retry = False
+                self.render()
             elif kind == "message":
                 self.message.set(value)
             elif kind == "idle":

@@ -63,6 +63,7 @@ def _unknown(p: Problem, s: Settings) -> Severity | None:
 
 # playbook_id -> rule. Every playbook must have an entry; tests enforce it.
 RULES: dict[str, Rule] = {
+    "demo_cleanup": lambda p, s: Severity.MINOR if p.evidence.get("remaining_bytes", 0) else None,
     "disk_space": _disk,
     "network": _network,
     "frozen_app": _frozen,

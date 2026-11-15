@@ -605,6 +605,59 @@ table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{border-bottom:
 
     lab = [Depends(lab_auth)]
 
+    cleanup_demo = None
+    cleanup_start_lock = threading.Lock()
+
+    def get_cleanup_demo():
+        nonlocal cleanup_demo
+        if not ctx.store.settings.demo:
+            raise HTTPException(404)
+        if cleanup_demo is None:
+            from ..demo_cleanup import DemoCleanup
+
+            toolbox = next(iter(ctx.pipeline.playbooks.values())).tools
+            cleanup_demo = DemoCleanup(toolbox, ctx.store.path.parent / "demo-cleanup")
+            with ctx.pipeline._lock:
+                ctx.pipeline.playbooks[cleanup_demo.id] = cleanup_demo
+        return cleanup_demo
+
+    @app.post("/api/lab/cleanup/start", dependencies=lab)
+    def lab_cleanup_start(body: dict):
+        # This route accepts no target, filenames, size or commands from callers.
+        if body:
+            raise HTTPException(400, "This demo uses its own fixed disposable files.")
+        from ..models import Signal
+        from ..safety.guard import GuardRefusal
+
+        with cleanup_start_lock:
+            demo = get_cleanup_demo()
+            try:
+                run = demo.prepare()
+                p = ctx.pipeline
+                with p._lock:
+                    card = p.runner.cards.get(run.card_id)
+                    if card is None or card.used or card.expired():
+                        problem = demo.match(Signal("demo", demo.id, {"run_id": run.id}))
+                        p.triage.assess(problem)
+                        card = p.propose(problem)
+                        run.card_id = card.id
+                return demo.snapshot(run.id)
+            except (OSError, GuardRefusal) as e:
+                raise HTTPException(409, str(e)) from None
+
+    @app.get("/api/lab/cleanup/{run_id}", dependencies=lab)
+    def lab_cleanup_state(run_id: str):
+        from ..safety.guard import GuardRefusal
+
+        with cleanup_start_lock:
+            demo = get_cleanup_demo()
+        try:
+            return demo.snapshot(run_id)
+        except KeyError:
+            raise HTTPException(404, "No such cleanup demo run.") from None
+        except (OSError, GuardRefusal) as e:
+            raise HTTPException(409, str(e)) from None
+
     @app.get("/api/lab/state", dependencies=lab)
     def lab_state():
         p = ctx.pipeline
